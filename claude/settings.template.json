@@ -1,4 +1,309 @@
 {
-  "_comment": "공유 hooks 등록만. 비밀/토큰/API키 없음. 경로는 {{HOME}} 템플릿. canonical=claude-3가 정본 채움. 각 머신은 apply 시 수동검토 머지(local 보존).",
-  "hooks": {}
+  "permissions": {
+    "allow": [
+      "Bash(curl:*)",
+      "Bash(bash:*)",
+      "Bash(timeout 45s bash:*)",
+      "Bash(source .env)",
+      "Bash(echo:*)",
+      "Bash(source:*)"
+    ],
+    "deny": [],
+    "ask": []
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/nco-session-start.sh",
+            "timeout": 10,
+            "statusMessage": "NCO 워크플로우 초기화 중..."
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/mesh-register.sh",
+            "timeout": 8,
+            "statusMessage": "Registering CLI session..."
+          },
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/mesh-autoresponder.sh",
+            "timeout": 6,
+            "statusMessage": "Starting mesh auto-responder..."
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/session-start.sh",
+            "timeout": 10,
+            "statusMessage": "NCO context auto-load..."
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 {{HOME}}/.claude/hooks/patch-inter-session.py",
+            "timeout": 10,
+            "statusMessage": "Patching inter-session plugin..."
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/mesh-plugin-guard.sh",
+            "timeout": 5,
+            "statusMessage": "Mesh plugin guard check..."
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/nco-task-classifier.sh",
+            "timeout": 3
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/mesh-heartbeat.sh",
+            "timeout": 5,
+            "statusMessage": "Mesh sync..."
+          },
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/mesh-precheck.sh",
+            "timeout": 8,
+            "statusMessage": "Checking active sessions & conflicts..."
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/improvement-inject.sh",
+            "timeout": 5,
+            "statusMessage": "이전 개선사항 로드 중..."
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/nco-workflow-inject.sh",
+            "timeout": 4,
+            "statusMessage": "NCO 워크플로우 계획 중..."
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/user-prompt-nco-context.sh",
+            "timeout": 6,
+            "statusMessage": "NCO context heartbeat..."
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/user-prompt-nco-route.sh",
+            "timeout": 3,
+            "statusMessage": "NCO 라우팅 안내 주입..."
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/nco-secret-scan.sh",
+            "timeout": 5,
+            "statusMessage": "Secret scan..."
+          },
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/nco-agent-enforce.sh",
+            "timeout": 8,
+            "statusMessage": "NCO delegation check..."
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|mcp__nco-commands__nco-task|mcp__nco-commands__nco-team|mcp__nco-commands__nco-parallel|mcp__nco-commands__nco-flow|mcp__nco-commands__nco-commander|mcp__nco-commands__nco-conductor",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/pre-edit-nco-gate.sh",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/nco-session-report.sh",
+            "timeout": 8,
+            "statusMessage": "NCO 세션 보고서 생성 중..."
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/nco-stop-global.sh",
+            "timeout": 30,
+            "statusMessage": "Progress check + next tasks..."
+          },
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/advisor-stop.sh",
+            "timeout": 25,
+            "statusMessage": "Advisor 품질 검토 중..."
+          },
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/memory-snapshot.sh",
+            "timeout": 25,
+            "statusMessage": "맥락 노트 저장 중..."
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/mesh-heartbeat.sh",
+            "timeout": 3
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/nco-gap-postsession.sh",
+            "timeout": 5,
+            "statusMessage": "Gap 분석 백그라운드 시작..."
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/nco-stop-quality-gate.sh",
+            "timeout": 20,
+            "statusMessage": "Quality gate 검증 중..."
+          },
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/no-false-report-gate.sh",
+            "timeout": 15,
+            "statusMessage": "거짓·미검증 보고 게이트..."
+          },
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/end-of-turn-check.sh",
+            "timeout": 30,
+            "statusMessage": "Self-eval + Gap 분석..."
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{HOME}}/projects/tools/warp-msg-stop-hook.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/nco-track-agent-use.sh",
+            "timeout": 3
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/nco-perf-tracker.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/post-edit-nco-review.sh",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash {{HOME}}/projects/.claude/hooks/nco-statusline.sh"
+  },
+  "enabledPlugins": {
+    "inter-session@inter-session": true,
+    "mesh-receiver@mesh-receiver": true
+  },
+  "extraKnownMarketplaces": {
+    "inter-session": {
+      "source": {
+        "source": "git",
+        "url": "https://github.com/yilunzhang/claude-code-inter-session.git"
+      }
+    },
+    "mesh-receiver": {
+      "source": {
+        "source": "directory",
+        "path": "{{HOME}}/.claude/plugins/marketplaces/mesh-receiver"
+      }
+    }
+  },
+  "advisorModel": "opus",
+  "autoUpdatesChannel": "latest",
+  "skipDangerousModePermissionPrompt": true
 }
