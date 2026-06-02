@@ -19,7 +19,11 @@ TTL=300                                       # 캐시 신선도(초). 5분.
 LOCK_STALE=120                                # 이 시간(초) 넘은 lock은 죽은 것으로 간주
 
 _now() { date +%s; }
+# 이식성: GNU(stat -c) / BSD·macOS(stat -f) 둘 다 지원
 _mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0; }
+# 이식성: macOS는 timeout/gtimeout이 기본 부재 → 있으면 사용, 없으면 timeout 없이 실행
+# (refresh는 백그라운드 detach라 timeout 없어도 statusline 렌더는 비차단)
+_to() { if command -v timeout >/dev/null 2>&1; then timeout "$@"; elif command -v gtimeout >/dev/null 2>&1; then gtimeout "$@"; else shift; "$@"; fi; }
 
 _trigger_refresh() {
   # lock이 없을 때만 detached 로 갱신 — 렌더 storm 방지.
@@ -50,9 +54,9 @@ refresh() {
   command -v higgsfield >/dev/null 2>&1 || exit 0
 
   local acct tx
-  acct=$(timeout 20 higgsfield account status --json 2>/dev/null)
+  acct=$(_to 20 higgsfield account status --json 2>/dev/null)
   [ -z "$acct" ] && exit 0
-  tx=$(timeout 20 higgsfield account transactions --size 100 --json 2>/dev/null)
+  tx=$(_to 20 higgsfield account transactions --size 100 --json 2>/dev/null)
 
   printf '%s\n---TX---\n%s' "$acct" "$tx" | python3 -c '
 import sys, json

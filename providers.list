@@ -6,5 +6,5 @@ cursor-agent  2026.06.02
 copilot       1.0.58
 opencode      1.15.13
 aider         latest
-vllm          latest
+# vllm        (옵션·GPU전용: nvidia GPU 머신만. 강제 아님 — fingerprint 누락보고 제외)
 higgsfield    0.1.40
