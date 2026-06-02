@@ -58,8 +58,7 @@ if os.path.exists(set_p): shutil.copy(set_p,set_p+".fleet-bak")
 for key in ("hooks","statusLine"):
     if key in tmpl: local[key]=tmpl[key]
 json.dump(local,open(set_p,"w"),ensure_ascii=False,indent=2)
-print("[merge] settings hooks+statusLine 적용(로컬 나머지 보존)")
-PYEOF
+print("[merge] settings.json hooks=canonical(순수, 동일). 머신전용은 settings.local.json(CC가 union머지, apply 미변경).")PYEOF
   log "settings.json 머지(hooks+statusLine), 백업 .fleet-bak"
 elif [ $DRY -eq 0 ] && [ $MERGE_SET -eq 0 ]; then
   log "⚠ settings 머지 생략(기본 OFF). 머신전용 훅 보존. 전체 sync는 --merge-settings (per-machine override 합의 후)."
