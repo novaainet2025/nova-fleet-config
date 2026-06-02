@@ -42,7 +42,7 @@ if [ $DRY -eq 0 ] && [ -d "$ROOT/scripts" ]; then
   log "scripts 배포: ~/projects/scripts/"
 fi
 
-# settings.json 머지: hooks + statusLine 만 (로컬 permissions/env/비밀/mcp 보존) + 백업
+# settings.json UNION 머지 (hooks: canonical ∪ 머신전용, statusLine: canonical) + 백업
 if [ $DRY -eq 0 ] && [ $MERGE_SET -eq 1 ] && [ -f "$ROOT/claude/settings.template.json" ]; then
   python3 - "$ROOT/claude/settings.template.json" "$DEST/settings.json" "$HOME" "$(whoami)" "$(uname -s)" <<'PYEOF'
 import json,sys,os,shutil
@@ -55,14 +55,26 @@ def sub(o):
 tmpl=sub(json.load(open(tmpl_p)))
 local=json.load(open(set_p)) if os.path.exists(set_p) else {}
 if os.path.exists(set_p): shutil.copy(set_p,set_p+".fleet-bak")
-for key in ("hooks","statusLine"):
-    if key in tmpl: local[key]=tmpl[key]
+if "statusLine" in tmpl: local["statusLine"]=tmpl["statusLine"]
+canon=tmpl.get("hooks",{}); cur=local.get("hooks",{}); merged={}
+for ev in set(list(canon)+list(cur)):
+    seen=set(); out=[]
+    for src in (canon.get(ev,[]), cur.get(ev,[])):
+        for grp in src:
+            for h in grp.get("hooks",[]):
+                c=h.get("command","")
+                if c and c not in seen: seen.add(c); out.append(h)
+    if out: merged[ev]=[{"hooks":out}]
+local["hooks"]=merged
 json.dump(local,open(set_p,"w"),ensure_ascii=False,indent=2)
-print("[merge] settings.json hooks=canonical(순수, 동일). 머신전용은 settings.local.json(CC가 union머지, apply 미변경).")PYEOF
-  log "settings.json 머지(hooks+statusLine), 백업 .fleet-bak"
+n=sum(len(g["hooks"]) for ev in merged.values() for g in ev)
+print("[merge] settings UNION: canonical+머신전용 이벤트별 합집합 dedup, 총 %d 훅"%n)
+PYEOF
+  log "settings.json UNION 머지 완료(canonical+머신전용 보존), 백업 .fleet-bak"
 elif [ $DRY -eq 0 ] && [ $MERGE_SET -eq 0 ]; then
-  log "⚠ settings 머지 생략(기본 OFF). 머신전용 훅 보존. 전체 sync는 --merge-settings (per-machine override 합의 후)."
+  log "settings 머지 생략(기본 OFF). 파일sync만. 전체 sync는 --merge-settings."
 fi
+
 # settings: 안전 위해 자동 덮어쓰기 금지 — 템플릿 머지 안내(비밀/ local 보존)
 log "settings.template.json 은 수동검토 머지 권장(비밀 보존). 참고: $ROOT/claude/settings.template.json"
 # providers 점검 (설치는 강제 안 함 — 누락만 보고)
