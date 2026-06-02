@@ -33,8 +33,43 @@ if [ $DRY -eq 0 ] && [ -d "$ROOT/claude/skills" ]; then
   for sk in "$ROOT"/claude/skills/*/; do [ -d "$sk" ] && cp -R "${sk%/}" "$DEST/skills/" 2>/dev/null; done
   log "skills 적용: $(ls "$ROOT/claude/skills" 2>/dev/null | tr '\n' ' ')"
 fi
-# settings: 안전 위해 자동 덮어쓰기 금지 — 템플릿 머지 안내(비밀/ local 보존)
-log "settings.template.json 은 수동검토 머지 권장(비밀 보존). 참고: $ROOT/claude/settings.template.json"
+# scripts (치환 후 {{HOME}}/projects/scripts/ 배포)
+if [ -d "$ROOT/scripts" ]; then
+  SCRIPTS_DEST="$HOME/projects/scripts"
+  mkdir -p "$SCRIPTS_DEST" 2>/dev/null
+  for f in "$ROOT"/scripts/*.sh; do [ -f "$f" ] || continue; n="$(basename "$f")"
+    if [ $DRY -eq 1 ]; then log "DRY script: $n"; else sub <"$f" >"$SCRIPTS_DEST/$n"; chmod +x "$SCRIPTS_DEST/$n"; log "script: $n"; fi; done
+fi
+# settings: hooks + statusLine 자동 머지 (permissions·비밀·로컬전용 키 보존)
+TMPL="$ROOT/claude/settings.template.json"
+SETTINGS="$DEST/settings.json"
+if [ -f "$TMPL" ] && [ -f "$SETTINGS" ]; then
+  if [ $DRY -eq 1 ]; then
+    log "DRY settings merge: hooks + statusLine + enabledPlugins + extraKnownMarketplaces + advisorModel"
+  else
+    python3 -c "
+import json, sys, copy
+tmpl = json.load(open('$TMPL'))
+local = json.load(open('$SETTINGS'))
+backup = copy.deepcopy(local)
+HOME = '$HOME'; USR = '$USR'; OS_NAME = '$OS'
+def sub(obj):
+    if isinstance(obj, str):
+        return obj.replace('{{HOME}}', HOME).replace('{{USER}}', USR).replace('{{OS}}', OS_NAME)
+    if isinstance(obj, list): return [sub(v) for v in obj]
+    if isinstance(obj, dict): return {k: sub(v) for k, v in obj.items()}
+    return obj
+# 머지 대상 키 (로컬 permissions·env 등 보존)
+for key in ['hooks', 'statusLine', 'enabledPlugins', 'extraKnownMarketplaces', 'advisorModel']:
+    if key in tmpl:
+        local[key] = sub(tmpl[key])
+json.dump(local, open('$SETTINGS', 'w'), indent=2, ensure_ascii=False)
+print('settings merged: hooks, statusLine, enabledPlugins, extraKnownMarketplaces, advisorModel')
+" 2>&1 && log "settings.json 머지 완료 (permissions·비밀 보존)" || log "settings 머지 실패 — 수동 검토 필요: $TMPL"
+  fi
+else
+  log "settings.template.json 또는 settings.json 없음 — 수동 머지 참고: $TMPL"
+fi
 # providers 점검 (설치는 강제 안 함 — 누락만 보고)
 log "provider 점검:"; while read -r p ver _; do [ -z "${p:-}" ] && continue; case "$p" in \#*) continue;; esac
   command -v "$p" >/dev/null 2>&1 && echo "  $p ✓" || echo "  $p ✗ 설치필요(${ver:-})"; done < "$ROOT/providers.list"
