@@ -6,9 +6,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEST="$HOME/.claude"
 DRY=0; MERGE_SET=0
 for a in "$@"; do [ "$a" = "--dry-run" ] && DRY=1; [ "$a" = "--merge-settings" ] && MERGE_SET=1; done
-OS="$(uname -s)"; USR="$(whoami)"
+OS="$(uname -s)"; USR="$(whoami)"; BASHP="$(command -v bash)"
 log(){ echo "[fleet-apply] $*"; }
-sub(){ sed -e "s|{{HOME}}|$HOME|g" -e "s|{{USER}}|$USR|g" -e "s|{{OS}}|$OS|g"; }
+sub(){ sed -e "s|{{HOME}}|$HOME|g" -e "s|{{USER}}|$USR|g" -e "s|{{OS}}|$OS|g" -e "s|{{BASH_PATH}}|$BASHP|g"; }
 
 # ★ 안전가드: SSOT가 아직 안 채워진 빈 골격이면 적용 거부 (실수로 빈설정 적용 방지)
 HK=$(ls "$ROOT"/claude/hooks/*.sh 2>/dev/null | wc -l | tr -d " ")
@@ -26,8 +26,9 @@ fi
 # hooks (템플릿 치환)
 for f in "$ROOT"/claude/hooks/*.sh; do [ -f "$f" ] || continue; n="$(basename "$f")"
   if [ $DRY -eq 1 ]; then log "DRY hook: $n"; else sub <"$f" >"$DEST/hooks/$n"; chmod +x "$DEST/hooks/$n"; log "hook: $n"; fi; done
-# commands
-[ $DRY -eq 0 ] && cp "$ROOT"/claude/commands/*.md "$DEST/commands/" 2>/dev/null && log "commands 적용"
+# commands (템플릿 치환 — {{HOME}}/{{BASH_PATH}} 등; hooks와 동일하게 sub() 통과. raw cp는 토큰 미치환 버그)
+for f in "$ROOT"/claude/commands/*.md; do [ -f "$f" ] || continue; n="$(basename "$f")"
+  if [ $DRY -eq 1 ]; then log "DRY command: $n"; else sub <"$f" >"$DEST/commands/$n"; log "command: $n"; fi; done
 # skills (공유 스킬 — OS전용은 canonical에서 제외됨)
 if [ $DRY -eq 0 ] && [ -d "$ROOT/claude/skills" ]; then
   mkdir -p "$DEST/skills"
