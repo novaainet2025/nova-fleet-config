@@ -30,7 +30,7 @@ for f in "$ROOT"/claude/hooks/*.sh; do [ -f "$f" ] || continue; n="$(basename "$
 # skills (공유 스킬 — OS전용은 canonical에서 제외됨)
 if [ $DRY -eq 0 ] && [ -d "$ROOT/claude/skills" ]; then
   mkdir -p "$DEST/skills"
-  for sk in "$ROOT"/claude/skills/*/; do [ -d "$sk" ] && cp -R "$sk" "$DEST/skills/" 2>/dev/null; done
+  for sk in "$ROOT"/claude/skills/*/; do [ -d "$sk" ] && cp -R "${sk%/}" "$DEST/skills/" 2>/dev/null; done
   log "skills 적용: $(ls "$ROOT/claude/skills" 2>/dev/null | tr '\n' ' ')"
 fi
 # settings: 안전 위해 자동 덮어쓰기 금지 — 템플릿 머지 안내(비밀/ local 보존)
