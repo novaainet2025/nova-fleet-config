@@ -1,0 +1,5 @@
+{
+  "_comment": "설치돼야 할 Claude plugin 목록(소스/마켓플레이스). 캐시(~/.claude/plugins/cache)는 동기화 제외 — 각 머신이 설치.",
+  "plugins": ["inter-session", "mesh-receiver"],
+  "notes": "claude-code-warp(mac), hwp-*(win)은 머신전용 — 정본 제외 가능. claude-3 가 공유목록 확정."
+}

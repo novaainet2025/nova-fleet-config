@@ -1,0 +1,4 @@
+{
+  "_comment": "공유 hooks 등록만. 비밀/토큰/API키 없음. 경로는 {{HOME}} 템플릿. canonical=claude-3가 정본 채움. 각 머신은 apply 시 수동검토 머지(local 보존).",
+  "hooks": {}
+}
