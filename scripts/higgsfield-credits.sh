@@ -19,7 +19,7 @@ TTL=300                                       # 캐시 신선도(초). 5분.
 LOCK_STALE=120                                # 이 시간(초) 넘은 lock은 죽은 것으로 간주
 
 _now() { date +%s; }
-_mtime() { stat -c %Y "$1" 2>/dev/null || echo 0; }
+_mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0; }
 
 _trigger_refresh() {
   # lock이 없을 때만 detached 로 갱신 — 렌더 storm 방지.
