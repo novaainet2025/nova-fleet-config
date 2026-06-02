@@ -4,7 +4,8 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEST="$HOME/.claude"
-DRY=0; [ "${1:-}" = "--dry-run" ] && DRY=1
+DRY=0; MERGE_SET=0
+for a in "$@"; do [ "$a" = "--dry-run" ] && DRY=1; [ "$a" = "--merge-settings" ] && MERGE_SET=1; done
 OS="$(uname -s)"; USR="$(whoami)"
 log(){ echo "[fleet-apply] $*"; }
 sub(){ sed -e "s|{{HOME}}|$HOME|g" -e "s|{{USER}}|$USR|g" -e "s|{{OS}}|$OS|g"; }
@@ -32,6 +33,36 @@ if [ $DRY -eq 0 ] && [ -d "$ROOT/claude/skills" ]; then
   mkdir -p "$DEST/skills"
   for sk in "$ROOT"/claude/skills/*/; do [ -d "$sk" ] && cp -R "${sk%/}" "$DEST/skills/" 2>/dev/null; done
   log "skills 적용: $(ls "$ROOT/claude/skills" 2>/dev/null | tr '\n' ' ')"
+fi
+
+# scripts/ 배포 (hooks가 {{HOME}}/projects/scripts/ 참조) — 템플릿 치환
+if [ $DRY -eq 0 ] && [ -d "$ROOT/scripts" ]; then
+  mkdir -p "$HOME/projects/scripts"
+  for sf in "$ROOT"/scripts/*.sh; do [ -f "$sf" ] || continue; sub <"$sf" >"$HOME/projects/scripts/$(basename "$sf")"; chmod +x "$HOME/projects/scripts/$(basename "$sf")"; done
+  log "scripts 배포: ~/projects/scripts/"
+fi
+
+# settings.json 머지: hooks + statusLine 만 (로컬 permissions/env/비밀/mcp 보존) + 백업
+if [ $DRY -eq 0 ] && [ $MERGE_SET -eq 1 ] && [ -f "$ROOT/claude/settings.template.json" ]; then
+  python3 - "$ROOT/claude/settings.template.json" "$DEST/settings.json" "$HOME" "$(whoami)" "$(uname -s)" <<'PYEOF'
+import json,sys,os,shutil
+tmpl_p,set_p,HOME,USR,OSN=sys.argv[1:6]
+def sub(o):
+    if isinstance(o,str): return o.replace("{{HOME}}",HOME).replace("{{USER}}",USR).replace("{{OS}}",OSN)
+    if isinstance(o,list): return [sub(x) for x in o]
+    if isinstance(o,dict): return {k:sub(v) for k,v in o.items()}
+    return o
+tmpl=sub(json.load(open(tmpl_p)))
+local=json.load(open(set_p)) if os.path.exists(set_p) else {}
+if os.path.exists(set_p): shutil.copy(set_p,set_p+".fleet-bak")
+for key in ("hooks","statusLine"):
+    if key in tmpl: local[key]=tmpl[key]
+json.dump(local,open(set_p,"w"),ensure_ascii=False,indent=2)
+print("[merge] settings hooks+statusLine 적용(로컬 나머지 보존)")
+PYEOF
+  log "settings.json 머지(hooks+statusLine), 백업 .fleet-bak"
+elif [ $DRY -eq 0 ] && [ $MERGE_SET -eq 0 ]; then
+  log "⚠ settings 머지 생략(기본 OFF). 머신전용 훅 보존. 전체 sync는 --merge-settings (per-machine override 합의 후)."
 fi
 # settings: 안전 위해 자동 덮어쓰기 금지 — 템플릿 머지 안내(비밀/ local 보존)
 log "settings.template.json 은 수동검토 머지 권장(비밀 보존). 참고: $ROOT/claude/settings.template.json"
