@@ -68,6 +68,14 @@
             "statusMessage": "Mesh plugin guard check..."
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/nova-fleet-config/install/sync-on-connect.sh 2>/dev/null || true"
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [

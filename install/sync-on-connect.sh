@@ -21,8 +21,9 @@ log(){ echo "[fleet-sync] $*"; }
 
 [ -d "$REPO/.git" ] || { log "SSOT 클론 없음($REPO). git clone <repo> $REPO 후 사용."; exit 0; }
 
-# 1) 비차단 pull (네트워크 멈춤 방지 — timeout + 백그라운드 안전)
-( cd "$REPO" && timeout 15 git pull --quiet --rebase origin main 2>/dev/null ) || log "pull 스킵(오프라인/충돌)"
+# 1) SSOT pull — 백그라운드 detach (세션시작 절대 비차단; 결과는 다음 세션에 반영).
+#    드리프트 리포트는 아래에서 *현재 로컬 클론* 기준 즉시 출력하므로 pull을 기다리지 않는다.
+( cd "$REPO" && timeout 15 git pull --quiet --rebase origin main >/dev/null 2>&1 </dev/null & ) >/dev/null 2>&1 || true
 
 # 2) 드리프트 비교 (canonical = SSOT repo 자체). glob은 비따옴표로 확장.
 lh=$(ls "$HOME"/.claude/hooks/*.sh 2>/dev/null | wc -l | tr -d ' ')
