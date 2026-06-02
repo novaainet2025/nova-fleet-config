@@ -22,9 +22,15 @@ _now() { date +%s; }
 _mtime() { stat -c %Y "$1" 2>/dev/null || echo 0; }
 
 _trigger_refresh() {
-  # lock이 없을 때만 detached(setsid)로 갱신 — 렌더 storm 방지
+  # lock이 없을 때만 detached 로 갱신 — 렌더 storm 방지.
+  # 렌더 비차단의 핵심은 *FD1(statusline 파이프) 분리*(>/dev/null 2>&1 </dev/null).
+  # setsid는 controlling-terminal까지 떼는 추가 강화지만 macOS엔 없을 수 있음 → 폴백.
   [ -d "$LOCK" ] && return 0
-  setsid bash "$0" --refresh >/dev/null 2>&1 < /dev/null &
+  if command -v setsid >/dev/null 2>&1; then
+    setsid bash "$0" --refresh >/dev/null 2>&1 < /dev/null &
+  else
+    ( bash "$0" --refresh >/dev/null 2>&1 < /dev/null & ) >/dev/null 2>&1
+  fi
 }
 
 refresh() {
