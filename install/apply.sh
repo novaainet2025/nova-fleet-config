@@ -26,6 +26,19 @@ fi
 # hooks (템플릿 치환)
 for f in "$ROOT"/claude/hooks/*.sh; do [ -f "$f" ] || continue; n="$(basename "$f")"
   if [ $DRY -eq 1 ]; then log "DRY hook: $n"; else sub <"$f" >"$DEST/hooks/$n"; chmod +x "$DEST/hooks/$n"; log "hook: $n"; fi; done
+# hook 디렉터리 단일화(§A.3/§D-2): 레거시 ~/projects/.claude/hooks(Linux 잔재) → ~/.claude/hooks 병합 후 폐기표식.
+#   canonical=~/.claude/hooks 단일(statusLine 등 전 config 단일참조, gentop-mac-1 e9c6387). Mac엔 레거시dir 없어 no-op.
+LEGACY_HOOKS="$HOME/projects/.claude/hooks"
+if [ -d "$LEGACY_HOOKS" ] && [ "$LEGACY_HOOKS" != "$DEST/hooks" ]; then
+  for lf in "$LEGACY_HOOKS"/*.sh; do
+    [ -f "$lf" ] || continue; ln="$(basename "$lf")"
+    [ -f "$DEST/hooks/$ln" ] && continue   # canonical 우선(이미 배포된 건 보존)
+    if [ $DRY -eq 1 ]; then log "DRY 레거시훅 병합: $ln"; else cp "$lf" "$DEST/hooks/$ln"; chmod +x "$DEST/hooks/$ln"; log "레거시훅 병합(projects→.claude): $ln"; fi
+  done
+  if [ $DRY -eq 0 ] && [ ! -f "$LEGACY_HOOKS/.deprecated" ]; then
+    touch "$LEGACY_HOOKS/.deprecated" 2>/dev/null && log "레거시 hook디렉터리 폐기표식: $LEGACY_HOOKS/.deprecated (단일화 완료; 안전확인 후 rm 가능)"
+  fi
+fi
 # commands (템플릿 치환 — {{HOME}}/{{BASH_PATH}} 등; hooks와 동일하게 sub() 통과. raw cp는 토큰 미치환 버그)
 for f in "$ROOT"/claude/commands/*.md; do [ -f "$f" ] || continue; n="$(basename "$f")"
   if [ $DRY -eq 1 ]; then log "DRY command: $n"; else sub <"$f" >"$DEST/commands/$n"; log "command: $n"; fi; done
