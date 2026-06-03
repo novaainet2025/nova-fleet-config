@@ -291,7 +291,7 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "bash {{HOME}}/projects/.claude/hooks/nco-statusline.sh"
+    "command": "bash {{HOME}}/.claude/hooks/nco-statusline.sh"
   },
   "enabledPlugins": {
     "inter-session@inter-session": true,
