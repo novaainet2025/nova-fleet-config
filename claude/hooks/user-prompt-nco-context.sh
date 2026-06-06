@@ -176,10 +176,16 @@ except: print('0 -1 -1')
     BOOTSTRAP_FLAG="/tmp/nco-bootstrap-${NCO_SESSION_ID}"
     if [ -f "$BOOTSTRAP_FLAG" ]; then
         _BS_NEED=""
-        pgrep -f "client.py.*--name ${MY_NAME}" >/dev/null 2>&1 || _BS_NEED="${_BS_NEED}inter-session "
+        # inter-session 이름 = <디바이스기기명>-<claude-N> (mesh/NCO 이름 NCO_NAME은 claude-N 그대로 유지)
+        # hostname 소문자화 + 비-[a-z0-9] → '-' + .local 제거 + 40자 cap(device쪽만 자르고 claude-N 보존)
+        _ISDEV=$(hostname 2>/dev/null | tr '[:upper:]' '[:lower:]' | sed -E 's/\.local$//; s/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
+        [ -z "$_ISDEV" ] && _ISDEV="dev"
+        _ISSUF="-${MY_NAME}"; _ISDEV="${_ISDEV:0:$((40-${#_ISSUF}))}"; _ISDEV="${_ISDEV%-}"
+        _ISNAME="${_ISDEV}${_ISSUF}"
+        pgrep -f "client.py.*--name ${_ISNAME}" >/dev/null 2>&1 || _BS_NEED="${_BS_NEED}inter-session "
         [ -f "/tmp/nco-inbox-${NCO_SESSION_ID}/monitor.lock" ] || _BS_NEED="${_BS_NEED}mesh-receiver"
         if [ -n "$_BS_NEED" ]; then
-            CONTEXT="${CONTEXT} [BOOTSTRAP] 실시간 채널 미활성(${_BS_NEED}). 본 응답의 어떤 작업보다 먼저 다음을 호출하라: (1) inter-session SKILL invoke(connect, name=${MY_NAME}) — 동명 클라이언트가 이미 있으면 flock이 자동 차단; (2) mesh-receiver는 plugin SKILL이 아닌 Monitor 도구로 직접 spawn — Monitor(command='INTER_MODE=monitor NCO_NAME=${MY_NAME} NCO_SESSION_ID=${NCO_SESSION_ID} bash \$HOME/.claude/hooks/mesh-inbox-poller.sh ${NCO_SESSION_ID} ${MY_NAME} 5', description='mesh DM watcher (${MY_NAME})', persistent=true, timeout_ms=3600000). 둘 다 idempotent — 이미 활성이면 자동 skip. Monitor 호출이 없으면 idle 상태에서 mesh DM 자동 inject가 영영 작동 안 한다."
+            CONTEXT="${CONTEXT} [BOOTSTRAP] 실시간 채널 미활성(${_BS_NEED}). 본 응답의 어떤 작업보다 먼저 다음을 호출하라: (1) inter-session SKILL invoke(connect, name=${_ISNAME}) — 이름은 반드시 ${_ISNAME}(=<디바이스기기명>-<claude-N>) 사용. 동명 클라이언트가 이미 있으면 flock이 자동 차단; (2) mesh-receiver는 plugin SKILL이 아닌 Monitor 도구로 직접 spawn — Monitor(command='INTER_MODE=monitor NCO_NAME=${MY_NAME} NCO_SESSION_ID=${NCO_SESSION_ID} bash \$HOME/.claude/hooks/mesh-inbox-poller.sh ${NCO_SESSION_ID} ${MY_NAME} 5', description='mesh DM watcher (${MY_NAME})', persistent=true, timeout_ms=3600000). 둘 다 idempotent — 이미 활성이면 자동 skip. Monitor 호출이 없으면 idle 상태에서 mesh DM 자동 inject가 영영 작동 안 한다."
         fi
         rm -f "$BOOTSTRAP_FLAG" 2>/dev/null
     fi
