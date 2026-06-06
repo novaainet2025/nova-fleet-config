@@ -21,7 +21,12 @@ fi
 if [ $DRY -eq 0 ]; then
   BK="$DEST/_fleet-backup-$(date +%Y%m%d-%H%M%S)"; mkdir -p "$BK"
   cp -R "$DEST/hooks" "$BK/" 2>/dev/null; cp -R "$DEST/commands" "$BK/" 2>/dev/null; cp "$DEST/settings.json" "$BK/" 2>/dev/null
+  cp "$DEST/CLAUDE.md" "$BK/" 2>/dev/null
   log "백업: $BK"
+fi
+# CLAUDE.md (정본 글로벌 지침 — GAP 해소 2026-06-06; 템플릿 치환 통과, 백업은 위에서 수행)
+if [ -f "$ROOT/claude/CLAUDE.md" ]; then
+  if [ $DRY -eq 1 ]; then log "DRY CLAUDE.md"; else sub <"$ROOT/claude/CLAUDE.md" >"$DEST/CLAUDE.md"; log "CLAUDE.md"; fi
 fi
 # hooks (템플릿 치환)
 for f in "$ROOT"/claude/hooks/*.sh; do [ -f "$f" ] || continue; n="$(basename "$f")"
