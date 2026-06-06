@@ -130,6 +130,17 @@ _detect_session_name() {
 }
 MY_NAME=$(_detect_session_name)
 
+# ── inter-session 이름용 hostname slug (fleet 통일 2026-06-06) ──
+# inter-session connect 이름 = <hostname-slug>-<claude-N> (mesh/NCO 내부명 NCO_NAME은 claude-N 유지)
+# hostname은 부팅 후 불변 → 머신 전역 1회 캐시로 렌더마다 hostname(1) 호출 회피
+_HOSTSLUG_CACHE="/tmp/nco-names/.hostslug"
+if [ -s "$_HOSTSLUG_CACHE" ]; then
+  _HOST_SLUG=$(cat "$_HOSTSLUG_CACHE" 2>/dev/null)
+else
+  _HOST_SLUG=$(hostname 2>/dev/null | tr '[:upper:]' '[:lower:]' | sed -E 's/\.local$//; s/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
+  [ -n "$_HOST_SLUG" ] && { mkdir -p /tmp/nco-names 2>/dev/null; printf '%s' "$_HOST_SLUG" > "$_HOSTSLUG_CACHE" 2>/dev/null; }
+fi
+
 # ── Windows %TEMP%\nco-names 미러링 (WSL→Win Claude inter-session 연동) ──
 _mirror_nco_names_to_windows() {
   [ -d /mnt/c/Users ] || return 0
@@ -555,8 +566,13 @@ bracket_color() {
 }
 
 # ── 출력 ──────────────────────────────────────────────────────
-# 줄1: 세션명(컬러) + 브라켓(dim) + 📁 프로젝트
-echo -e "$(name_color "$MY_NAME") $(bracket_color "$BRACKET") ${GR}📁${RST} ${W}${PROJECT_NAME}${RST}"
+# 줄1: inter-session명(<hostname>-claude-N: host=dim, claude-N=컬러) + 브라켓(dim) + 📁 프로젝트
+if [ -n "$_HOST_SLUG" ] && [ "$MY_NAME" != "cli" ]; then
+  _NAME_DISP="${DIM}${_HOST_SLUG}-${RST}$(name_color "$MY_NAME")"
+else
+  _NAME_DISP="$(name_color "$MY_NAME")"
+fi
+echo -e "$_NAME_DISP $(bracket_color "$BRACKET") ${GR}📁${RST} ${W}${PROJECT_NAME}${RST}"
 
 # 줄2: API/WS + 에이전트 목록
 TOTAL_AGENTS=${#ORDER[@]}

@@ -4,8 +4,16 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEST="$HOME/.claude"
-DRY=0; MERGE_SET=0
-for a in "$@"; do [ "$a" = "--dry-run" ] && DRY=1; [ "$a" = "--merge-settings" ] && MERGE_SET=1; done
+DRY=0; MERGE_SET=0; FORCE=0; EXPECT_HASH=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dry-run) DRY=1;;
+    --merge-settings) MERGE_SET=1;;
+    --force) FORCE=1;;                            # 미커밋/손편집 보존가드 무시 강제
+    --expect-hash) shift; EXPECT_HASH="${1:-}";;  # pull-now 신호가 운반한 기대 commit-hash
+    --expect-hash=*) EXPECT_HASH="${1#*=}";;
+  esac; shift
+done
 OS="$(uname -s)"; USR="$(whoami)"; BASHP="$(command -v bash)"
 log(){ echo "[fleet-apply] $*"; }
 sub(){ sed -e "s|{{HOME}}|$HOME|g" -e "s|{{USER}}|$USR|g" -e "s|{{OS}}|$OS|g" -e "s|{{BASH_PATH}}|$BASHP|g"; }
@@ -18,6 +26,32 @@ if [ "$HK" -eq 0 ]; then
   exit 2
 fi
 
+# ★ commit-hash 게이트 (claude-3/6 합의): pull-now 신호가 운반한 기대 해시를 *이미 git fetch된 ROOT 트리*에만 대조.
+#   신호 본문 절대 불신 — 로컬 git HEAD가 그 해시(또는 prefix)일 때만 진행. 불일치=fail-closed(거부). git 아니면 스킵.
+if [ -n "$EXPECT_HASH" ]; then
+  CUR_HASH="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo none)"
+  if [ "$CUR_HASH" != "$EXPECT_HASH" ] && [ "${CUR_HASH#"$EXPECT_HASH"}" = "$CUR_HASH" ]; then
+    echo "[fleet-apply] commit-hash 불일치: ROOT HEAD=$CUR_HASH, 기대=$EXPECT_HASH. 'git -C \"$ROOT\" fetch && git checkout' 후 재실행. 적용 거부."
+    exit 3
+  fi
+  log "commit-hash 검증 통과: $CUR_HASH"
+fi
+
+# ★ 비파괴 보존가드 헬퍼 (claude-8 합의): 대상 파일이 (a)git 워킹트리 미커밋 변경(심볼릭링크 타깃 포함) 또는
+#   (b)직전 fleet-apply 이후 손편집(manifest md5 불일치)이면 0 반환 → 호출부가 보존(skip). --force로만 무시.
+MANIFEST="$DEST/.fleet-applied.md5"
+_fleet_preserve(){ # 0=preserve(local dirty), 1=safe-to-write
+  local dst="$1" real wt cur last
+  [ -e "$dst" ] || return 1
+  real="$(readlink -f "$dst" 2>/dev/null || echo "$dst")"
+  wt="$(git -C "$(dirname "$real")" rev-parse --show-toplevel 2>/dev/null)"
+  if [ -n "$wt" ] && [ -n "$(git -C "$wt" status --porcelain -- "$real" 2>/dev/null)" ]; then return 0; fi
+  cur="$(md5sum "$dst" 2>/dev/null | cut -d' ' -f1)"
+  last="$(awk -v n="$(basename "$dst")" '$2==n{print $1}' "$MANIFEST" 2>/dev/null | tail -1)"
+  [ -n "$last" ] && [ "$cur" != "$last" ] && return 0
+  return 1
+}
+
 if [ $DRY -eq 0 ]; then
   BK="$DEST/_fleet-backup-$(date +%Y%m%d-%H%M%S)"; mkdir -p "$BK"
   cp -R "$DEST/hooks" "$BK/" 2>/dev/null; cp -R "$DEST/commands" "$BK/" 2>/dev/null; cp "$DEST/settings.json" "$BK/" 2>/dev/null
@@ -28,9 +62,18 @@ fi
 if [ -f "$ROOT/claude/CLAUDE.md" ]; then
   if [ $DRY -eq 1 ]; then log "DRY CLAUDE.md"; else sub <"$ROOT/claude/CLAUDE.md" >"$DEST/CLAUDE.md"; log "CLAUDE.md"; fi
 fi
-# hooks (템플릿 치환)
-for f in "$ROOT"/claude/hooks/*.sh; do [ -f "$f" ] || continue; n="$(basename "$f")"
-  if [ $DRY -eq 1 ]; then log "DRY hook: $n"; else sub <"$f" >"$DEST/hooks/$n"; chmod +x "$DEST/hooks/$n"; log "hook: $n"; fi; done
+# hooks (템플릿 치환) — ★비파괴 보존가드: 미커밋/손편집 보존(skip), 적용후 bash -n 실패시 백업 롤백(fail-closed)
+for f in "$ROOT"/claude/hooks/*.sh; do [ -f "$f" ] || continue; n="$(basename "$f")"; dst="$DEST/hooks/$n"
+  if [ $DRY -eq 1 ]; then log "DRY hook: $n"; continue; fi
+  if [ $FORCE -eq 0 ] && _fleet_preserve "$dst"; then log "보존(skip): $n — 미커밋/손편집 감지, 덮어쓰기 안 함(백업:$BK, 강제:--force)"; continue; fi
+  sub <"$f" >"$dst"; chmod +x "$dst"
+  if ! bash -n "$dst" 2>/dev/null; then
+    if [ -f "$BK/hooks/$n" ]; then cp "$BK/hooks/$n" "$dst"; log "$n 구문오류 → 백업 롤백(fail-closed)"; else log "$n 구문오류·백업없음(주의)"; fi
+  else
+    { grep -v " $n\$" "$MANIFEST" 2>/dev/null; echo "$(md5sum "$dst" 2>/dev/null | cut -d' ' -f1) $n"; } > "$MANIFEST.tmp" 2>/dev/null && mv -f "$MANIFEST.tmp" "$MANIFEST" 2>/dev/null
+    log "hook: $n"
+  fi
+done
 # .py 훅 배포 (plugin-cache 패처 등 — patch-inter-session.py; GAP 해소 2026-06-06)
 for f in "$ROOT"/claude/hooks/*.py; do [ -f "$f" ] || continue; n="$(basename "$f")"
   if [ $DRY -eq 1 ]; then log "DRY py-hook: $n"; else sub <"$f" >"$DEST/hooks/$n"; chmod +x "$DEST/hooks/$n"; log "py-hook: $n"; fi; done
