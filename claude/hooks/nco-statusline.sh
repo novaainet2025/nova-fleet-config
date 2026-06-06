@@ -649,7 +649,11 @@ if [ -n "$_AX_SID" ]; then
   _ax_since=$(cat "$_axm" 2>/dev/null)
   [ -n "$_ax_since" ] && _AX_Q="?since=${_ax_since}&session=${MY_NAME}"
 fi
-_AX_TEXT=$(curl -s --max-time 0.3 "http://127.0.0.1:6300/api/statusline${_AX_Q}" 2>/dev/null \
+# nova-ax 베이스 URL: NCO_AX_URL env > ~/.claude/.ax-url 파일 > 로컬 기본. (노트북 등 무 nova-ax 노드는 중앙노드 tailnet URL로 원격참조)
+_AX_BASE="${NCO_AX_URL:-}"
+[ -z "$_AX_BASE" ] && [ -s "$HOME/.claude/.ax-url" ] && _AX_BASE="$(tr -d '[:space:]' < "$HOME/.claude/.ax-url" 2>/dev/null)"
+[ -z "$_AX_BASE" ] && _AX_BASE="http://127.0.0.1:6300"
+_AX_TEXT=$(curl -s --max-time 0.6 "${_AX_BASE}/api/statusline${_AX_Q}" 2>/dev/null \
   | python3 -c "
 import sys, json
 try: print(json.load(sys.stdin).get('text','') or '')
