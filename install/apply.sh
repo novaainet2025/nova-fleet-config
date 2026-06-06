@@ -31,6 +31,13 @@ fi
 # hooks (템플릿 치환)
 for f in "$ROOT"/claude/hooks/*.sh; do [ -f "$f" ] || continue; n="$(basename "$f")"
   if [ $DRY -eq 1 ]; then log "DRY hook: $n"; else sub <"$f" >"$DEST/hooks/$n"; chmod +x "$DEST/hooks/$n"; log "hook: $n"; fi; done
+# .py 훅 배포 (plugin-cache 패처 등 — patch-inter-session.py; GAP 해소 2026-06-06)
+for f in "$ROOT"/claude/hooks/*.py; do [ -f "$f" ] || continue; n="$(basename "$f")"
+  if [ $DRY -eq 1 ]; then log "DRY py-hook: $n"; else sub <"$f" >"$DEST/hooks/$n"; chmod +x "$DEST/hooks/$n"; log "py-hook: $n"; fi; done
+# 패처 실행 — inter-session plugin cache(client.py/shared.py)에 NCO 패치 재적용(멱등)
+if [ $DRY -eq 0 ] && [ -f "$DEST/hooks/patch-inter-session.py" ]; then
+  python3 "$DEST/hooks/patch-inter-session.py" >/dev/null 2>&1 && log "patch-inter-session.py 실행(plugin cache 패치 적용)" || log "patch-inter-session.py 실행 실패(무시 — 다음 SessionStart 재시도)"
+fi
 # hook 디렉터리 단일화(§A.3/§D-2): 레거시 ~/projects/.claude/hooks(Linux 잔재) → ~/.claude/hooks 병합 후 폐기표식.
 #   canonical=~/.claude/hooks 단일(statusLine 등 전 config 단일참조, gentop-mac-1 e9c6387). Mac엔 레거시dir 없어 no-op.
 LEGACY_HOOKS="$HOME/projects/.claude/hooks"
