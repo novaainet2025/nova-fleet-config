@@ -1,0 +1,435 @@
+{
+  "version": "1.0.0",
+  "updated": "2026-06-10",
+  "providers": {
+    "codex": {
+      "name": "OpenAI Codex CLI",
+      "binary": "/opt/homebrew/bin/codex",
+      "type": "cli",
+      "role": "Engineer",
+      "score": 83,
+      "headless": true,
+      "tools": {
+        "exec": {
+          "desc": "코드 작업 비대화형 실행 (버그픽스, 구현, 수정)",
+          "cmd": ["codex", "exec", "{prompt}"],
+          "options": {
+            "--config model=o4-mini": "모델 지정",
+            "--config sandbox_permissions=[\"disk-full-read-access\"]": "디스크 전체 읽기 허용",
+            "--enable auto-edit": "자동 편집 허용"
+          },
+          "example": "codex exec 'Fix the null pointer bug in src/main.ts'"
+        },
+        "review": {
+          "desc": "코드 리뷰 비대화형 실행",
+          "cmd": ["codex", "review", "{prompt}"],
+          "options": {
+            "--uncommitted": "스테이징/언스테이징/언트랙 변경 리뷰"
+          },
+          "example": "codex review 'Security review for auth module' --uncommitted"
+        },
+        "apply": {
+          "desc": "최근 Codex 에이전트 diff를 git apply로 적용",
+          "cmd": ["codex", "apply"],
+          "example": "codex apply"
+        },
+        "mcp_server": {
+          "desc": "Codex를 MCP 서버로 시작 (stdio)",
+          "cmd": ["codex", "mcp-server"],
+          "example": "codex mcp-server"
+        }
+      }
+    },
+    "opencode": {
+      "name": "OpenCode",
+      "binary": "/opt/homebrew/bin/opencode",
+      "type": "cli",
+      "role": "Architect",
+      "score": 90,
+      "headless": true,
+      "tools": {
+        "run": {
+          "desc": "메시지로 비대화형 실행 (설계, 구조 분석)",
+          "cmd": ["opencode", "run", "{message}"],
+          "options": {
+            "-m provider/model": "모델 지정 (예: anthropic/claude-opus-4-6)",
+            "--format json": "JSON 이벤트 출력",
+            "-c": "이전 세션 계속",
+            "-s {id}": "특정 세션 계속"
+          },
+          "example": "opencode run 'Design microservice architecture for auth system'"
+        },
+        "models": {
+          "desc": "사용 가능한 모델 목록",
+          "cmd": ["opencode", "models"],
+          "example": "opencode models"
+        },
+        "providers": {
+          "desc": "AI 프로바이더 설정 관리",
+          "cmd": ["opencode", "providers"],
+          "example": "opencode providers"
+        },
+        "serve": {
+          "desc": "헤드리스 서버 시작 (백그라운드)",
+          "cmd": ["opencode", "serve"],
+          "example": "opencode serve &"
+        },
+        "acp": {
+          "desc": "ACP (Agent Client Protocol) 서버 시작",
+          "cmd": ["opencode", "acp"],
+          "example": "opencode acp"
+        }
+      }
+    },
+    "gemini": {
+      "name": "Gemini CLI",
+      "binary": "/opt/homebrew/bin/gemini",
+      "type": "cli",
+      "role": "Designer",
+      "score": 85,
+      "headless": true,
+      "tools": {
+        "prompt": {
+          "desc": "비대화형 프롬프트 실행 (UI/디자인/멀티모달)",
+          "cmd": ["gemini", "-p", "{prompt}"],
+          "options": {
+            "--model gemini-2.5-pro": "모델 지정",
+            "--all_files": "모든 파일 컨텍스트 포함",
+            "--sandbox": "샌드박스 모드"
+          },
+          "example": "gemini -p 'Design a responsive dashboard layout for this app'"
+        },
+        "skills_list": {
+          "desc": "등록된 스킬 목록",
+          "cmd": ["gemini", "skills", "list"],
+          "example": "gemini skills list"
+        },
+        "skills_add": {
+          "desc": "스킬 추가",
+          "cmd": ["gemini", "skills", "add", "{url}"],
+          "example": "gemini skills add https://example.com/skill"
+        },
+        "mcp_add": {
+          "desc": "MCP 서버 추가",
+          "cmd": ["gemini", "mcp", "add", "{name}", "{command}"],
+          "example": "gemini mcp add myserver 'npx my-mcp-server'"
+        },
+        "gemma": {
+          "desc": "로컬 Gemma 모델 라우팅 관리",
+          "cmd": ["gemini", "gemma"],
+          "example": "gemini gemma"
+        }
+      }
+    },
+    "cursor-agent": {
+      "name": "Cursor Agent",
+      "binary": "/Users/nova-ai/.local/bin/cursor-agent",
+      "type": "cli",
+      "role": "Reviewer",
+      "score": 78,
+      "headless": true,
+      "tools": {
+        "prompt": {
+          "desc": "비대화형 에이전트 실행 (코드 리뷰, 버그 분석)",
+          "cmd": ["cursor-agent", "--print", "{prompt}"],
+          "options": {
+            "--output-format json": "JSON 출력",
+            "--output-format stream-json": "스트리밍 JSON",
+            "--model sonnet-4": "모델 지정",
+            "--force": "모든 커맨드 허용 (--yolo)",
+            "--stream-partial-output": "부분 출력 스트리밍"
+          },
+          "example": "cursor-agent --print 'Review auth.ts for security issues'"
+        },
+        "plan": {
+          "desc": "읽기 전용 계획 모드 (분석, 제안만, 편집 없음)",
+          "cmd": ["cursor-agent", "--print", "--mode", "plan", "{prompt}"],
+          "example": "cursor-agent --print --mode plan 'Plan refactoring for UserService'"
+        },
+        "ask": {
+          "desc": "Q&A 모드 (질문/설명, 읽기 전용)",
+          "cmd": ["cursor-agent", "--print", "--mode", "ask", "{prompt}"],
+          "example": "cursor-agent --print --mode ask 'How does the auth middleware work?'"
+        },
+        "models": {
+          "desc": "사용 가능한 모델 목록",
+          "cmd": ["cursor-agent", "--list-models"],
+          "example": "cursor-agent --list-models"
+        }
+      }
+    },
+    "hermes": {
+      "name": "Hermes Agent",
+      "binary": "/Users/nova-ai/.local/bin/hermes",
+      "type": "cli",
+      "role": "ToolUser",
+      "score": 86,
+      "headless": true,
+      "tools": {
+        "oneshot": {
+          "desc": "원샷 모드 — 프롬프트 전송 후 최종 응답만 출력 (도구 사용 포함)",
+          "cmd": ["hermes", "-z", "{prompt}"],
+          "options": {
+            "-m {model}": "모델 지정 (예: anthropic/claude-sonnet-4-6)",
+            "--provider {p}": "프로바이더 (anthropic, openai, openrouter)",
+            "-t {toolsets}": "툴셋 지정",
+            "--yolo": "위험 커맨드 승인 생략",
+            "--accept-hooks": "훅 자동 수락",
+            "--skills {s}": "스킬 프리로드"
+          },
+          "example": "hermes -z 'Search for the latest React 19 features and summarize'"
+        },
+        "tools_list": {
+          "desc": "사용 가능한 도구 목록",
+          "cmd": ["hermes", "tools", "list"],
+          "example": "hermes tools list"
+        },
+        "memory_list": {
+          "desc": "메모리 항목 조회",
+          "cmd": ["hermes", "memory", "list"],
+          "example": "hermes memory list"
+        },
+        "memory_add": {
+          "desc": "메모리 항목 추가",
+          "cmd": ["hermes", "memory", "add", "{content}"],
+          "example": "hermes memory add 'Project uses TypeScript strict mode'"
+        },
+        "kanban": {
+          "desc": "칸반 보드 조회/관리",
+          "cmd": ["hermes", "kanban"],
+          "example": "hermes kanban"
+        },
+        "mcp_list": {
+          "desc": "MCP 서버 목록",
+          "cmd": ["hermes", "mcp", "list"],
+          "example": "hermes mcp list"
+        },
+        "skills_list": {
+          "desc": "스킬 목록",
+          "cmd": ["hermes", "skills", "list"],
+          "example": "hermes skills list"
+        },
+        "cron_list": {
+          "desc": "크론 작업 목록",
+          "cmd": ["hermes", "cron", "list"],
+          "example": "hermes cron list"
+        },
+        "dashboard": {
+          "desc": "에이전트 대시보드",
+          "cmd": ["hermes", "dashboard"],
+          "example": "hermes dashboard"
+        },
+        "mcp_serve": {
+          "desc": "Hermes를 MCP 서버로 시작",
+          "cmd": ["hermes", "mcp", "serve", "--accept-hooks"],
+          "example": "hermes mcp serve --accept-hooks"
+        }
+      }
+    },
+    "copilot": {
+      "name": "GitHub Copilot CLI",
+      "binary": "/opt/homebrew/bin/copilot",
+      "type": "cli",
+      "role": "Researcher",
+      "score": 75,
+      "headless": true,
+      "tools": {
+        "prompt": {
+          "desc": "비대화형 프롬프트 실행 (리서치, 문서화, 코드 완성)",
+          "cmd": ["copilot", "-p", "{prompt}", "--allow-all"],
+          "options": {
+            "--allow-all": "모든 권한 허용",
+            "--yolo": "모든 도구 자동 허용",
+            "--effort high": "추론 노력 수준 (none/low/medium/high/max)",
+            "--stream on": "스트리밍 모드",
+            "--plan": "계획 모드 (편집 없음)",
+            "--enable-memory": "메모리 활성화"
+          },
+          "example": "copilot -p 'Research best practices for WebSocket security' --allow-all"
+        },
+        "plan": {
+          "desc": "계획 모드 — 편집 없이 계획만 작성",
+          "cmd": ["copilot", "--plan", "-p", "{prompt}", "--allow-all"],
+          "example": "copilot --plan -p 'Plan database migration for v2 schema'"
+        },
+        "acp": {
+          "desc": "ACP (Agent Client Protocol) 서버 시작",
+          "cmd": ["copilot", "--acp"],
+          "example": "copilot --acp"
+        }
+      }
+    },
+    "aider": {
+      "name": "Aider",
+      "binary": "/opt/homebrew/bin/aider",
+      "type": "cli",
+      "role": "Engineer",
+      "score": 72,
+      "headless": true,
+      "tools": {
+        "message": {
+          "desc": "비대화형 메시지 실행 (코드 수정)",
+          "cmd": ["aider", "--message", "{prompt}", "--yes", "--no-pretty"],
+          "options": {
+            "--model {model}": "모델 지정",
+            "--architect": "아키텍트 모드",
+            "--edit-format diff": "diff 형식 편집",
+            "--no-auto-commits": "자동 커밋 비활성화",
+            "--no-git": "git 비활성화"
+          },
+          "example": "aider --message 'Refactor UserService to use dependency injection' --yes --no-pretty"
+        },
+        "architect": {
+          "desc": "아키텍트 모드 — 코드 설계 후 구현",
+          "cmd": ["aider", "--architect", "--message", "{prompt}", "--yes", "--no-pretty"],
+          "example": "aider --architect --message 'Redesign auth flow using JWT' --yes"
+        }
+      }
+    },
+    "mlx": {
+      "name": "MLX LM (Apple Silicon 로컬)",
+      "binary": "/Users/nova-ai/.local/bin/mlx_lm.generate",
+      "type": "local",
+      "role": "Engineer",
+      "score": 82,
+      "headless": true,
+      "default_model": "/Users/nova-ai/project/LM-models/mlx/gemma-4-26b-a4b-it-4bit",
+      "tools": {
+        "generate": {
+          "desc": "로컬 MLX 모델로 텍스트 생성 (프라이버시 보장)",
+          "cmd": ["mlx_lm.generate", "--model", "{model}", "--prompt", "{prompt}", "--max-tokens", "2048"],
+          "options": {
+            "--max-tokens {n}": "최대 토큰 수",
+            "--temp {t}": "Temperature (0.0~2.0)",
+            "--system-prompt {s}": "시스템 프롬프트",
+            "--verbose false": "출력 최소화"
+          },
+          "example": "mlx_lm.generate --model /Users/nova-ai/project/LM-models/mlx/gemma-4-26b-a4b-it-4bit --prompt 'Explain this code:' --max-tokens 512"
+        },
+        "server_start": {
+          "desc": "OpenAI 호환 로컬 서버 시작 (포트 8080)",
+          "cmd": ["mlx_lm.server", "--model", "{model}", "--port", "8080"],
+          "options": {
+            "--port {p}": "포트 번호",
+            "--host {h}": "호스트 주소",
+            "--max-tokens {n}": "최대 토큰",
+            "--log-level INFO": "로그 레벨"
+          },
+          "example": "mlx_lm.server --model /path/to/model --port 8080"
+        },
+        "manage": {
+          "desc": "MLX 모델 관리 (다운로드, 삭제, 목록)",
+          "cmd": ["mlx_lm.manage", "{action}"],
+          "example": "mlx_lm.manage --help"
+        },
+        "lora": {
+          "desc": "LoRA 파인튜닝",
+          "cmd": ["mlx_lm.lora", "--model", "{model}", "--train"],
+          "example": "mlx_lm.lora --help"
+        }
+      }
+    },
+    "nvidia": {
+      "name": "NVIDIA AI (Reasoner via NCO)",
+      "binary": null,
+      "type": "api",
+      "role": "Reasoner",
+      "score": 88,
+      "headless": true,
+      "via_nco": true,
+      "tools": {
+        "task": {
+          "desc": "복잡 추론/분석/아키텍처 리뷰 (Nemotron 모델)",
+          "cmd": ["curl", "-s", "-X", "POST", "http://localhost:6200/api/task",
+                  "-H", "Content-Type: application/json",
+                  "-d", "{\"ai\":\"nvidia\",\"prompt\":\"{prompt}\"}"],
+          "example": "curl -s -X POST http://localhost:6200/api/task -H 'Content-Type: application/json' -d '{\"ai\":\"nvidia\",\"prompt\":\"Analyze this algorithm complexity\"}'"
+        }
+      }
+    },
+    "gemini-deep": {
+      "name": "Gemini Deep Research",
+      "binary": null,
+      "type": "api",
+      "role": "DeepResearcher",
+      "score": 92,
+      "headless": true,
+      "via_nco": true,
+      "tools": {
+        "task": {
+          "desc": "심층 리서치/문서 분석/종합 보고서 (긴 컨텍스트, 웹 그라운딩)",
+          "cmd": ["curl", "-s", "-X", "POST", "http://localhost:6200/api/task",
+                  "-H", "Content-Type: application/json",
+                  "-d", "{\"ai\":\"gemini-deep\",\"prompt\":\"{prompt}\"}"],
+          "example": "curl -s -X POST http://localhost:6200/api/task -d '{\"ai\":\"gemini-deep\",\"prompt\":\"Research WebAssembly security vulnerabilities\"}'"
+        }
+      }
+    },
+    "openrouter": {
+      "name": "OpenRouter (Generalist via NCO)",
+      "binary": null,
+      "type": "api",
+      "role": "Generalist",
+      "score": 75,
+      "headless": true,
+      "via_nco": true,
+      "tools": {
+        "task": {
+          "desc": "범용 무료 AI (코드/분석/리서치)",
+          "cmd": ["curl", "-s", "-X", "POST", "http://localhost:6200/api/task",
+                  "-H", "Content-Type: application/json",
+                  "-d", "{\"ai\":\"openrouter\",\"prompt\":\"{prompt}\"}"],
+          "example": "curl -s -X POST http://localhost:6200/api/task -d '{\"ai\":\"openrouter\",\"prompt\":\"General task here\"}'"
+        }
+      }
+    },
+    "higgsfield": {
+      "name": "Higgsfield AI (Media Generation)",
+      "binary": "higgsfield",
+      "type": "cli",
+      "role": "Media",
+      "score": 70,
+      "headless": false,
+      "via_nco": true,
+      "tools": {
+        "task": {
+          "desc": "이미지/영상 생성 (FLUX.2, Veo 3.1, Kling) via NCO",
+          "cmd": ["curl", "-s", "-X", "POST", "http://localhost:6200/api/task",
+                  "-H", "Content-Type: application/json",
+                  "-d", "{\"ai\":\"higgsfield\",\"prompt\":\"{prompt}\"}"],
+          "example": "curl -s -X POST http://localhost:6200/api/task -d '{\"ai\":\"higgsfield\",\"prompt\":\"Generate: futuristic city at night, photorealistic\"}'"
+        }
+      }
+    },
+    "openclaw": {
+      "name": "OpenClaw (Browser Agent)",
+      "binary": "openclaw",
+      "type": "cli",
+      "role": "BrowserAgent",
+      "score": 80,
+      "headless": false,
+      "via_nco": true,
+      "tools": {
+        "task": {
+          "desc": "브라우저 자동화/웹 스크래핑/폼 작성 via NCO",
+          "cmd": ["curl", "-s", "-X", "POST", "http://localhost:6200/api/task",
+                  "-H", "Content-Type: application/json",
+                  "-d", "{\"ai\":\"openclaw\",\"prompt\":\"{prompt}\"}"],
+          "example": "curl -s -X POST http://localhost:6200/api/task -d '{\"ai\":\"openclaw\",\"prompt\":\"Navigate to X and extract Y\"}'"
+        }
+      }
+    }
+  },
+  "nco_api": {
+    "base": "http://localhost:6200",
+    "endpoints": {
+      "task": "POST /api/task {ai, prompt}",
+      "parallel": "POST /api/parallel {prompt, providers:[]}",
+      "discussion": "POST /api/discussion {prompt, providers:[], maxRounds}",
+      "conductor": "POST /api/conductor {prompt}",
+      "commander": "POST /api/commander {prompt}",
+      "health": "GET /health",
+      "providers": "GET /api/providers"
+    }
+  }
+}
