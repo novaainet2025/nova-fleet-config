@@ -8,3 +8,4 @@ opencode      1.15.13
 aider         latest
 # vllm        (옵션·GPU전용: nvidia GPU 머신만. 강제 아님 — fingerprint 누락보고 제외)
 higgsfield    0.1.40
+gbrain        0.42.x         # AI 지식그래프+하이브리드검색 MCP — bun install -g github:garrytan/gbrain

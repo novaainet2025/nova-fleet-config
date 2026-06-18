@@ -282,3 +282,90 @@ ISNAME="${_ISDEV}${_ISSUF}"   # → /inter-session connect "$ISNAME"
 두 SKILL/Monitor는 idempotent (이미 활성이면 자동 skip). 활성 후엔 외부에서 보낸 mesh DM / inter-session DM이 사용자 입력 없이 conversation에 자동 inject됨. 이 단계 완료 후 사용자 본 요청 처리.
 
 `[BOOTSTRAP]` 라벨이 없으면 이미 활성이거나 SessionStart hook 미적용 환경 — 추가 invoke 불필요.
+
+---
+
+## gbrain — 지식그래프 + 하이브리드 검색 MCP
+
+gbrain은 AI 에이전트용 지식 레이어다. Claude Code MCP로 등록 후 `gbrain search`/`gbrain think` 도구를 바로 사용할 수 있다. NCO·nova-ax와 독립적으로 동작하며, nova-ax의 RAGEngine을 강화한다.
+
+### 설치 (WSL/Linux + Mac 동일 절차)
+
+```bash
+# 1. bun 설치
+npm install -g bun          # WSL/Linux (sudo 없음)
+# 또는: curl -fsSL https://bun.sh/install | bash  (Mac/Linux)
+# 또는: brew install bun                            (Mac)
+
+# 2. gbrain 설치
+~/.bun/bin/bun install -g github:garrytan/gbrain
+# 또는 PATH에 bun이 있으면: bun install -g github:garrytan/gbrain
+
+# 3. 초기화 (로컬 PGLite, 서버 불필요)
+~/.bun/bin/gbrain init --pglite --no-embedding
+# embedding API 키 있으면: --embedding-model openai:text-embedding-3-large
+
+# 4. Claude Code MCP 등록
+claude mcp add gbrain -- ~/.bun/bin/gbrain serve
+
+# 5. 상태 확인
+~/.bun/bin/gbrain doctor
+```
+
+### 바이너리 위치
+
+| OS | 경로 |
+|---|---|
+| WSL/Linux | `/home/nova/.bun/bin/gbrain` |
+| Mac | `/Users/nova-ai/.bun/bin/gbrain` |
+
+### 주요 명령
+
+| 명령 | 용도 |
+|---|---|
+| `gbrain search <쿼리>` | 하이브리드 검색 (LLM 비용 없음, 빠름) |
+| `gbrain think <질문>` | 합성 답변 + 인용 + 간격 분석 (LLM 사용) |
+| `gbrain import <디렉터리>` | 마크다운 파일 인덱싱 |
+| `gbrain capture <텍스트>` | 신호 포착 (메시지당 자동) |
+| `gbrain doctor` | 상태 진단 |
+| `gbrain serve` | MCP 서버 시작 (stdio) |
+| `gbrain serve --http` | MCP 서버 HTTP 모드 (포트 지정 필요, 6200·6300 제외) |
+
+### NCO 에이전트 역할 배정
+
+| 에이전트 | gbrain 용도 |
+|---|---|
+| `copilot` (Researcher) | `gbrain search` 로 사전 컨텍스트 조회 |
+| `nvidia` (Reasoner) | `gbrain think` 결과를 추론 인풋으로 활용 |
+| `cursor-agent` (Reviewer) | `gbrain search` 로 관련 코드 컨텍스트 확인 |
+
+### nova-ax 연동
+
+nova-ax `.env`에 추가:
+```bash
+GBRAIN_MCP_URL=stdio  # MCP stdio 모드 사용 시
+# HTTP 모드 사용 시: GBRAIN_MCP_URL=http://localhost:<포트>
+```
+
+### embedding 설정 (선택, 나중에 추가 가능)
+
+임베딩 없이도 BM25 키워드 검색은 동작. 시맨틱 검색 활성화 시:
+```bash
+# OpenAI 키가 있으면:
+export OPENAI_API_KEY=sk-...
+gbrain config set embedding_model openai:text-embedding-3-large
+
+# 로컬 Ollama 사용 시 (무료):
+gbrain config set embedding_model ollama:nomic-embed-text
+```
+
+### 상태 확인 및 장애 대응
+
+```bash
+~/.bun/bin/gbrain doctor        # 전체 상태 점검
+~/.bun/bin/gbrain config list   # 현재 설정 확인
+claude mcp list                 # Claude Code MCP 등록 확인
+```
+
+**임베딩 미설정 시**: 기능 65/100, BM25 키워드 검색만 동작 (정상 운영 가능)
+**embedding 설정 후**: 벡터+BM25 하이브리드, 그래프 탐색 활성화
