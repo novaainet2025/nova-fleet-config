@@ -289,6 +289,21 @@ ISNAME="${_ISDEV}${_ISSUF}"   # → /inter-session connect "$ISNAME"
 
 gbrain은 AI 에이전트용 지식 레이어다. Claude Code MCP로 등록 후 `gbrain search`/`gbrain think` 도구를 바로 사용할 수 있다. NCO·nova-ax와 독립적으로 동작하며, nova-ax의 RAGEngine을 강화한다.
 
+> 상세 가이드: `~/nova-fleet-config/docs/gbrain-guide.md`
+
+### 자동 트리거 (retrieval-reflex) — 핵심 규칙
+
+**retrieval-reflex**는 `~/.claude/skills/retrieval-reflex/SKILL.md`에 위치하며 매 세션 자동 로드된다.  
+`apply.sh` 실행 시 `nova-fleet-config/claude/skills/retrieval-reflex/` → `~/.claude/skills/`로 자동 배포.
+
+**Claude가 자동으로 brain을 조회해야 하는 조건:**
+1. 개체(사람/회사/프로젝트/장소)가 대화의 주제일 때 → `get_page <slug>` 호출
+2. brain 페이지 포인터가 컨텍스트에 주입됐을 때 → 즉시 open
+3. 모르는 이름/용어 등장 시 → 빠른 `query` resolve
+4. 비자명한 세부사항 주장 전 → 사실 확인 후 응답
+
+**skip 조건**: 단순 언급, 이미 로드된 개체, 사소한 세부사항
+
 ### 설치 (WSL/Linux + Mac 동일 절차)
 
 ```bash
