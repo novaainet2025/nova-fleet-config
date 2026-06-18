@@ -58,6 +58,16 @@ if [ $DRY -eq 0 ]; then
   cp "$DEST/CLAUDE.md" "$BK/" 2>/dev/null
   log "백업: $BK"
 fi
+# bun PATH 자동 주입 — gbrain/bun 도구용 (~/.bun/bin). 이미 있으면 skip (멱등)
+if [ $DRY -eq 0 ]; then
+  _RCFILE="$HOME/.bashrc"; [ "$(uname -s)" = Darwin ] && _RCFILE="$HOME/.zshrc"
+  if [ -f "$_RCFILE" ] && ! grep -q '\.bun/bin' "$_RCFILE" 2>/dev/null; then
+    printf '\n# gbrain / bun PATH (nova-fleet-config)\nexport PATH="$HOME/.bun/bin:$PATH"\n' >> "$_RCFILE"
+    log "bun PATH 주입: $_RCFILE"
+  else
+    log "bun PATH: $_RCFILE 이미 설정됨(skip)"
+  fi
+fi
 # CLAUDE.md (정본 글로벌 지침 — GAP 해소 2026-06-06; 템플릿 치환 통과, 백업은 위에서 수행)
 if [ -f "$ROOT/claude/CLAUDE.md" ]; then
   if [ $DRY -eq 1 ]; then log "DRY CLAUDE.md"; else sub <"$ROOT/claude/CLAUDE.md" >"$DEST/CLAUDE.md"; log "CLAUDE.md"; fi
@@ -148,7 +158,8 @@ fi
 log "settings.template.json 은 수동검토 머지 권장(비밀 보존). 참고: $ROOT/claude/settings.template.json"
 # providers 점검 (설치는 강제 안 함 — 누락만 보고)
 log "provider 점검:"; while read -r p ver _; do [ -z "${p:-}" ] && continue; case "$p" in \#*) continue;; esac
-  command -v "$p" >/dev/null 2>&1 && echo "  $p ✓" || echo "  $p ✗ 설치필요(${ver:-})"; done < "$ROOT/providers.list"
+  # bun 기반 도구는 ~/.bun/bin도 함께 탐색 (PATH 미등록 대응)
+  { command -v "$p" >/dev/null 2>&1 || [ -x "$HOME/.bun/bin/$p" ]; } && echo "  $p ✓" || echo "  $p ✗ 설치필요(${ver:-})"; done < "$ROOT/providers.list"
 # NCO ai-providers.json: ollama 자동감지 → enabled 자동설정 (§C ②OS분기, claude-6/win-2 정책)
 #   Mac(Darwin)+MLX=false, ollama 미응답=false, ollama 응답=true(단 Mac MLX 우선시 false 유지)
 NCO_CFG="$HOME/project/nco/config/ai-providers.json"

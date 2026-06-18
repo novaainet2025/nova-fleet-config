@@ -11,4 +11,4 @@ echo "settings_hooks: $(python3 -c "import json;d=json.load(open('$HOME/.claude/
 echo "hooks_md5: $(cat $(ls ~/.claude/hooks/*.sh 2>/dev/null | sort) 2>/dev/null | md5sum | cut -d' ' -f1)"
 echo "commands_md5: $(cat $(ls ~/.claude/commands/*.md 2>/dev/null | sort) 2>/dev/null | md5sum | cut -d' ' -f1)"
 echo "settings_md5: $(python3 -c "import json,hashlib;d=json.load(open('$HOME/.claude/settings.json'));print(hashlib.md5(json.dumps({'hooks':d.get('hooks'),'statusLine':d.get('statusLine')},sort_keys=True).encode()).hexdigest())" 2>/dev/null)"
-echo "providers: $(for p in claude codex gemini cursor-agent copilot opencode aider vllm higgsfield; do command -v $p >/dev/null 2>&1 && printf '%s ' $p; done)"
+echo "providers: $(for p in claude codex gemini cursor-agent copilot opencode aider vllm higgsfield gbrain; do { command -v $p >/dev/null 2>&1 || [ -x "$HOME/.bun/bin/$p" ]; } && printf '%s ' $p; done)"
