@@ -282,35 +282,35 @@ BUN="${HOME}/.bun/bin/bun"
 [[ -x "$BUN" ]] || BUN="$(command -v bun 2>/dev/null || echo '')"
 
 # pipx (hermes 의존 — Python 격리 패키지 관리자)
-if ! command -v pipx &>/dev/null && ! [[ -x "$HOME/.local/bin/pipx" ]]; then
+_pipx_ok() { command -v pipx &>/dev/null || [[ -x "$HOME/.local/bin/pipx" ]] || [[ -x "/usr/bin/pipx" ]]; }
+if ! _pipx_ok; then
   info "pipx 설치 중..."
-  PIPX_INSTALLED=false
   if command -v brew &>/dev/null; then
-    brew install pipx 2>/dev/null && PIPX_INSTALLED=true
+    brew install pipx 2>/dev/null || true
+  elif command -v apt-get &>/dev/null; then
+    # python3-venv 먼저 (pipx venv 생성에 필요)
+    sudo apt-get install -y python3-venv python3-pip 2>/dev/null || true
+    # Ubuntu 22.04+: apt에 pipx 패키지 있음
+    sudo apt-get install -y pipx 2>/dev/null || true
+    # apt 실패 시 pip fallback
+    if ! _pipx_ok; then
+      python3 -m pip install --user pipx 2>/dev/null \
+        || python3 -m pip install --user --break-system-packages pipx 2>/dev/null \
+        || true
+    fi
   fi
-  if [[ "$PIPX_INSTALLED" == "false" ]] && command -v apt-get &>/dev/null; then
-    # Ubuntu 22.04+ — apt 우선 (PEP 668 externally-managed 환경에서도 안전)
-    sudo apt-get install -y pipx 2>/dev/null && PIPX_INSTALLED=true
-  fi
-  if [[ "$PIPX_INSTALLED" == "false" ]]; then
-    # fallback: pip3 (--break-system-packages는 PEP 668 차단 우회)
-    pip3 install --user pipx 2>/dev/null \
-      || pip3 install --user --break-system-packages pipx 2>/dev/null \
-      || python3 -m pip install --user pipx 2>/dev/null
-    [[ -x "$HOME/.local/bin/pipx" ]] && PIPX_INSTALLED=true
-  fi
-  export PATH="$HOME/.local/bin:$PATH"
-  if [[ "$PIPX_INSTALLED" == "true" ]] || command -v pipx &>/dev/null || [[ -x "$HOME/.local/bin/pipx" ]]; then
+  export PATH="$HOME/.local/bin:$HOME/.local/pipx/bin:$PATH"
+  if _pipx_ok; then
     ok "pipx 설치 완료"
     pipx ensurepath 2>/dev/null || true
   else
-    warn "pipx 설치 실패 — hermes는 수동 설치 필요: sudo apt install pipx"
+    warn "pipx 설치 실패 — 수동: sudo apt install pipx 또는 pip3 install pipx"
   fi
 else
   ok "pipx 이미 설치됨"
 fi
-# PATH 갱신 (pipx 설치 후 hermes 섹션에서 바로 사용 가능하도록)
-export PATH="$HOME/.local/bin:$PATH"
+# PATH 재확인 (이후 hermes 섹션에서 즉시 사용 가능)
+export PATH="$HOME/.local/bin:$HOME/.local/pipx/bin:/usr/bin:$PATH"
 
 install_provider() {
   local name="$1" cmd="$2"
@@ -328,10 +328,15 @@ install_provider "codex" "npm install -g @openai/codex"
 if [[ "$OS" == "mac" ]]; then
   install_provider "opencode" "brew install opencode"
 else
-  if ! command -v opencode &>/dev/null; then
+  if ! command -v opencode &>/dev/null && ! [[ -x "$HOME/.local/bin/opencode" ]]; then
     info "opencode 설치 중..."
-    curl -fsSL https://opencode.ai/install | bash 2>/dev/null && ok "opencode 설치 완료" \
-      || warn "opencode 설치 실패 (수동: https://opencode.ai)"
+    # npm install -g opencode-ai 가 curl|bash 보다 안정적 (파이프 실패 없음)
+    npm install -g opencode-ai 2>/dev/null && ok "opencode 설치 완료 (npm)" || {
+      # fallback: 공식 curl 설치 스크립트
+      curl -fsSL https://opencode.ai/install 2>/dev/null | bash 2>/dev/null \
+        && ok "opencode 설치 완료 (curl)" \
+        || warn "opencode 설치 실패 (수동: npm install -g opencode-ai)"
+    }
   else
     ok "opencode 이미 설치됨"
   fi
@@ -687,9 +692,17 @@ echo "  ━━━━━━━━━━━━━━━━━━━━━━━━
 
 check_cmd() {
   local name="$1" cmd="${2:-$1}"
-  command -v "$cmd" &>/dev/null || [[ -x "$HOME/.local/bin/$cmd" ]] || [[ -x "$HOME/.bun/bin/$cmd" ]] \
-    && echo -e "  ${GREEN}✓${NC} $name" \
-    || echo -e "  ${RED}✗${NC} $name (미설치)"
+  # PATH 탐색 + 주요 설치 위치 직접 확인 (PATH 미설정 케이스 커버)
+  if command -v "$cmd" &>/dev/null \
+    || [[ -x "$HOME/.local/bin/$cmd" ]] \
+    || [[ -x "$HOME/.bun/bin/$cmd" ]] \
+    || [[ -x "/usr/bin/$cmd" ]] \
+    || [[ -x "/usr/local/bin/$cmd" ]] \
+    || [[ -x "/opt/homebrew/bin/$cmd" ]]; then
+    echo -e "  ${GREEN}✓${NC} $name"
+  else
+    echo -e "  ${RED}✗${NC} $name (미설치)"
+  fi
 }
 
 check_cmd "Node.js"            "node"
