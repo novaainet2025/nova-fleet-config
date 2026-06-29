@@ -31,7 +31,7 @@ INTER_BIN_CANDIDATES=(
 for _d in "$HOME/.claude/plugins/cache/inter-session/inter-session"/*/skills/inter-session/bin; do
   [[ -f "$_d/send.py" ]] && INTER_BIN_CANDIDATES=("$_d" "${INTER_BIN_CANDIDATES[@]}")
 done
-COORDINATOR="nova-macstudio-claude-1"
+COORDINATOR="nova-macstudio-cli"
 REINSTALL=false
 for arg in "${@:-}"; do [[ "$arg" == "--reinstall" ]] && REINSTALL=true; done
 
