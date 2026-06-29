@@ -99,7 +99,7 @@ if [[ "$OS" == "mac" ]]; then
   done
 else
   sudo apt-get update -qq
-  for pkg in git curl jq unzip zstd; do
+  for pkg in git curl jq unzip zstd python3 python3-pip python3-venv python3-dev build-essential; do
     command -v "$pkg" &>/dev/null && ok "$pkg 이미 있음" || sudo apt-get install -y "$pkg"
   done
 fi
@@ -191,6 +191,15 @@ else
   else
     info "Tailscale 설치 중..."
     curl -fsSL https://tailscale.com/install.sh | sh && ok "Tailscale 설치 완료"
+  fi
+  # 서비스 자동 시작 (WSL은 systemd 지원 여부 확인)
+  if pidof systemd &>/dev/null || systemctl is-system-running &>/dev/null 2>&1; then
+    sudo systemctl enable tailscaled 2>/dev/null || true
+    sudo systemctl start tailscaled 2>/dev/null && ok "Tailscale 서비스 시작됨" || true
+  else
+    # WSL1 / systemd 없는 환경
+    sudo tailscaled --state=/var/lib/tailscale/tailscaled.state &>/dev/null &
+    ok "Tailscale 데몬 시작됨 (no-systemd)"
   fi
   warn "Tailscale 로그인 필요: sudo tailscale up"
 fi
@@ -444,6 +453,42 @@ elif [[ -n "$BUN" && -x "$BUN" ]]; then
   "$BUN" install -g github:garrytan/gbrain 2>/dev/null && ok "gbrain 설치 완료" || warn "gbrain 설치 실패"
 else
   warn "gbrain: bun 필요 — bun 설치 후 수동: bun install -g github:garrytan/gbrain"
+fi
+
+# [10] inter-session (Claude Code 세션 간 메시지 플러그인)
+INTER_SESS_VENV="$HOME/.claude/data/inter-session/venv"
+INTER_SESS_PLUGIN_DIR="$HOME/.claude/plugins/cache/inter-session"
+info "inter-session 확인 중..."
+# Python deps 선설치 (플러그인 설치 전에도 준비)
+if [[ -d "$INTER_SESS_VENV" ]]; then
+  ok "inter-session Python venv 이미 설치됨"
+else
+  info "inter-session Python deps 설치 중 (websockets, psutil)..."
+  mkdir -p "$HOME/.claude/data/inter-session"
+  _IS_OK=false
+  if command -v uv &>/dev/null; then
+    uv venv "$INTER_SESS_VENV" 2>/dev/null \
+      && uv pip install -p "$INTER_SESS_VENV" websockets psutil 2>/dev/null \
+      && _IS_OK=true
+  fi
+  if [[ "$_IS_OK" == "false" ]] && command -v python3 &>/dev/null; then
+    python3 -m venv "$INTER_SESS_VENV" 2>/dev/null \
+      && "$INTER_SESS_VENV/bin/pip" install --quiet websockets psutil 2>/dev/null \
+      && _IS_OK=true
+  fi
+  [[ "$_IS_OK" == "true" ]] && ok "inter-session deps 설치 완료" \
+    || warn "inter-session deps 설치 실패 (python3 확인 필요)"
+fi
+# 플러그인 설치 (claude CLI 필요)
+if [[ -d "$INTER_SESS_PLUGIN_DIR" ]]; then
+  ok "inter-session 플러그인 이미 설치됨"
+elif command -v claude &>/dev/null; then
+  info "inter-session 플러그인 설치 중..."
+  claude plugin install inter-session 2>/dev/null \
+    && ok "inter-session 플러그인 설치 완료" \
+    || warn "inter-session 플러그인 설치 실패 — claude 로그인 후: claude plugin install inter-session"
+else
+  warn "inter-session: claude 로그인 후 자동 설치됨 (claude plugin install inter-session)"
 fi
 
 # MLX (Mac Apple Silicon 전용 — 조건 불충족 시 완전 스킵)
@@ -730,8 +775,22 @@ check_cmd "Higgsfield"        "higgsfield"
 check_cmd "bun"               "bun"
 check_cmd "gbrain"            "gbrain"
 check_cmd "pipx"              "pipx"
+check_cmd "python3"           "python3"
 [[ "$OS" == "mac" && "$IS_ARM64" == "true" ]] && check_cmd "mlx-lm (Mac)" "mlx_lm.server"
 [[ "$OS" != "mac" ]] && check_cmd "Ollama (Linux)" "ollama"
+[[ "$OS" != "mac" ]] && check_cmd "Tailscale"      "tailscale"
+
+# inter-session venv 체크
+if [[ -d "$HOME/.claude/data/inter-session/venv" ]]; then
+  echo -e "  ${GREEN}✓${NC} inter-session deps (venv)"
+else
+  echo -e "  ${RED}✗${NC} inter-session deps (미설치)"
+fi
+if [[ -d "$HOME/.claude/plugins/cache/inter-session" ]]; then
+  echo -e "  ${GREEN}✓${NC} inter-session plugin"
+else
+  echo -e "  ${YELLOW}⚠${NC} inter-session plugin (claude 로그인 후 설치 필요)"
+fi
 
 echo "  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
