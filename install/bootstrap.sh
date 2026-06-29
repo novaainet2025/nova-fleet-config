@@ -25,7 +25,10 @@ _IS_WIN_BASH=false
 [[ "${MSYSTEM:-}" =~ ^(MINGW|MSYS|UCRT) ]] && _IS_WIN_BASH=true
 [[ "${OSTYPE:-}" == "cygwin" ]] && _IS_WIN_BASH=true
 # USERPROFILE는 Windows 환경에서만 설정됨 (Git Bash는 /proc/version 없음)
-if [[ "$_IS_WIN_BASH" == "false" ]] && [[ -n "${USERPROFILE:-}" ]] && [[ ! -f /proc/version ]]; then
+# macOS도 /proc/version 없으므로 OSTYPE=darwin* 는 명시적으로 제외
+if [[ "${OSTYPE:-}" == darwin* ]]; then
+  _IS_WIN_BASH=false  # Mac — 절대 Windows 가드 적용하지 않음
+elif [[ "$_IS_WIN_BASH" == "false" ]] && [[ -n "${USERPROFILE:-}" ]] && [[ ! -f /proc/version ]]; then
   _IS_WIN_BASH=true
 fi
 
@@ -146,9 +149,19 @@ if [[ "$OS" == "mac" ]]; then
   done
 else
   sudo apt-get update -qq
-  for pkg in git curl jq unzip zstd python3 python3-pip python3-venv python3-dev build-essential; do
-    command -v "$pkg" &>/dev/null && ok "$pkg 이미 있음" || sudo apt-get install -y "$pkg"
+  # 실행 파일이 없는 패키지(python3-pip 등)는 command -v 검사 불가 → dpkg로 일괄 확인 후 한번에 설치
+  _MISSING_PKGS=()
+  for pkg in git curl jq unzip zstd; do
+    command -v "$pkg" &>/dev/null || _MISSING_PKGS+=("$pkg")
   done
+  for pkg in python3 python3-pip python3-venv python3-dev build-essential; do
+    dpkg -s "$pkg" &>/dev/null || _MISSING_PKGS+=("$pkg")
+  done
+  if [[ ${#_MISSING_PKGS[@]} -gt 0 ]]; then
+    info "설치 중: ${_MISSING_PKGS[*]}"
+    sudo apt-get install -y "${_MISSING_PKGS[@]}"
+  fi
+  ok "기본 도구 확인 완료 (git curl jq python3 venv 등)"
 fi
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -211,19 +224,19 @@ if [[ "$OS" == "mac" ]]; then
   brew services start redis 2>/dev/null || true
   redis-cli ping &>/dev/null && ok "Redis 응답: PONG" || warn "Redis 응답 없음 (수동 시작 필요)"
 else
-  command -v redis-cli &>/dev/null && ok "Redis 이미 설치됨" || {
-    sudo apt-get install -y redis-server
-  }
-  # 서비스 시작 — systemd 유무에 따라 분기
-  if _systemd_ok; then
-    sudo systemctl enable redis-server 2>/dev/null || true
-    sudo systemctl start redis-server 2>/dev/null || true
+  command -v redis-cli &>/dev/null || sudo apt-get install -y redis-server
+  # 이미 응답 중이면 스킵 (중복 기동 방지)
+  if redis-cli ping &>/dev/null; then
+    ok "Redis 이미 실행 중"
+  elif _systemd_ok; then
+    sudo systemctl enable --now redis-server 2>/dev/null || true
+    redis-cli ping &>/dev/null && ok "Redis 응답: PONG" || warn "Redis 응답 없음"
   else
-    # WSL (no-systemd) — service 명령 또는 직접 실행
+    # WSL (no-systemd) — service → direct 순서로 시도
     sudo service redis-server start 2>/dev/null \
       || sudo redis-server --daemonize yes 2>/dev/null || true
+    redis-cli ping &>/dev/null && ok "Redis 응답: PONG" || warn "Redis 응답 없음 (수동: sudo service redis-server start)"
   fi
-  redis-cli ping &>/dev/null && ok "Redis 응답: PONG" || warn "Redis 응답 없음 (수동: sudo service redis-server start)"
 fi
 
 # ══════════════════════════════════════════════════════════════════════════
