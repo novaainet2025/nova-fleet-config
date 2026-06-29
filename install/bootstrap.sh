@@ -270,7 +270,9 @@ fi
 # ══════════════════════════════════════════════════════════════════════════
 step 11 "AI 프로바이더 설치"
 
-# bun 설치 (gbrain 필요)
+# ── 선행 도구 설치 (bun, pipx) ──────────────────────────────────────────────
+
+# bun (gbrain 의존)
 if ! command -v bun &>/dev/null && ! [[ -x "$HOME/.bun/bin/bun" ]]; then
   info "bun 설치 중..."
   curl -fsSL https://bun.sh/install | bash && ok "bun 설치 완료" || warn "bun 설치 실패"
@@ -279,6 +281,20 @@ fi
 BUN="${HOME}/.bun/bin/bun"
 [[ -x "$BUN" ]] || BUN="$(command -v bun 2>/dev/null || echo '')"
 
+# pipx (hermes 의존 — Python 격리 패키지 관리자)
+if ! command -v pipx &>/dev/null && ! [[ -x "$HOME/.local/bin/pipx" ]]; then
+  info "pipx 설치 중..."
+  if command -v brew &>/dev/null; then
+    brew install pipx 2>/dev/null && ok "pipx 설치 완료 (brew)" || warn "pipx 설치 실패"
+  else
+    pip3 install --user pipx 2>/dev/null && ok "pipx 설치 완료 (pip)" || warn "pipx 설치 실패"
+  fi
+  export PATH="$HOME/.local/bin:$PATH"
+  pipx ensurepath 2>/dev/null || true
+else
+  ok "pipx 이미 설치됨"
+fi
+
 install_provider() {
   local name="$1" cmd="$2"
   command -v "$name" &>/dev/null && { ok "$name 이미 설치됨"; return 0; }
@@ -286,14 +302,15 @@ install_provider() {
   eval "$cmd" && ok "$name 설치 완료" || warn "$name 설치 실패 (수동 확인 필요)"
 }
 
-# codex
+# ── AI 프로바이더 CLI 설치 ────────────────────────────────────────────────────
+
+# [1] Codex (OpenAI)
 install_provider "codex" "npm install -g @openai/codex"
 
-# opencode
+# [2] OpenCode
 if [[ "$OS" == "mac" ]]; then
   install_provider "opencode" "brew install opencode"
 else
-  # Linux/WSL: curl 설치 스크립트 사용 (npm 패키지명 다름)
   if ! command -v opencode &>/dev/null; then
     info "opencode 설치 중..."
     curl -fsSL https://opencode.ai/install | bash 2>/dev/null && ok "opencode 설치 완료" \
@@ -303,7 +320,7 @@ else
   fi
 fi
 
-# gh (GitHub CLI) + copilot extension
+# [3] gh (GitHub CLI) + Copilot extension
 if [[ "$OS" == "mac" ]]; then
   install_provider "gh" "brew install gh"
 else
@@ -316,34 +333,36 @@ else
     ok "gh 이미 설치됨"
   fi
 fi
-# copilot extension (gh 인증 없어도 extension 설치는 가능)
+# copilot extension
 gh extension list 2>/dev/null | grep -q copilot && ok "gh-copilot 이미 설치됨" || {
   gh extension install github/gh-copilot 2>/dev/null && ok "gh-copilot 설치 완료" || warn "gh-copilot 설치 실패 (gh auth login 후 재시도)"
 }
 
-# agy (Antigravity — Go binary from GitHub Releases)
-if ! command -v agy &>/dev/null && ! [[ -x "$HOME/.local/bin/agy" ]]; then
-  info "agy 설치 중 (GitHub Releases)..."
-  AGY_ARCH="arm64"; [[ "$IS_ARM64" != "true" ]] && AGY_ARCH="amd64"
-  AGY_OS="darwin"; [[ "$OS" != "mac" ]] && AGY_OS="linux"
-  AGY_URL="https://github.com/novaainet2025/antigravity/releases/latest/download/agy-${AGY_OS}-${AGY_ARCH}"
-  mkdir -p "$HOME/.local/bin"
-  curl -fsSL "$AGY_URL" -o "$HOME/.local/bin/agy" 2>/dev/null && {
-    chmod +x "$HOME/.local/bin/agy"
-    ok "agy 설치 완료"
-  } || warn "agy 설치 실패 (URL 또는 repo 확인 필요)"
+# [4] AGY CLI (Google Antigravity CLI — Gemini CLI 공식 후속)
+command -v agy &>/dev/null && ok "agy (Antigravity CLI) 이미 설치됨" || {
+  info "AGY (Antigravity CLI) 설치 중..."
+  curl -fsSL https://antigravity.google/cli/install.sh 2>/dev/null | bash 2>/dev/null \
+    && ok "agy 설치 완료" \
+    || warn "agy 설치 실패 (수동: https://github.com/google-antigravity/antigravity-cli)"
+}
+
+# [5] cursor-agent (Cursor CLI Agent — 공식 설치 스크립트)
+if command -v cursor-agent &>/dev/null || [[ -x "$HOME/.local/bin/cursor-agent" ]]; then
+  ok "cursor-agent 이미 설치됨"
 else
-  ok "agy 이미 설치됨"
+  info "cursor-agent 설치 중..."
+  curl -fsSL https://cursor.com/install 2>/dev/null | bash 2>/dev/null \
+    && ok "cursor-agent 설치 완료" \
+    || warn "cursor-agent 설치 실패 (수동: https://cursor.com/cli)"
 fi
 
-# cursor (Mac: Cursor 앱 필요, shim 설치)
+# cursor shim (Mac: Cursor 앱 GUI 바이너리 래퍼)
 if [[ "$OS" == "mac" ]]; then
   if [[ -d "/Applications/Cursor.app" ]]; then
     ok "Cursor 앱 이미 있음"
   else
     warn "Cursor 앱 미설치 — https://cursor.com 에서 수동 설치 필요"
   fi
-  # shim 설치
   if ! command -v cursor &>/dev/null && ! [[ -x "$HOME/.local/bin/cursor" ]]; then
     mkdir -p "$HOME/.local/bin"
     cat > "$HOME/.local/bin/cursor" << 'CURSOR_SHIM'
@@ -363,20 +382,30 @@ CURSOR_SHIM
   fi
 fi
 
-# AGY CLI (Google Antigravity CLI — Gemini CLI 후속)
-command -v agy &>/dev/null && ok "agy (Antigravity CLI) 이미 설치됨" || {
-  info "AGY (Antigravity CLI) 설치 중..."
-  curl -fsSL https://antigravity.google/cli/install.sh 2>/dev/null | bash 2>/dev/null \
-    && ok "agy 설치 완료" \
-    || warn "agy 설치 실패 (수동: https://github.com/google-antigravity/antigravity-cli)"
-}
+# [6] Hermes (MCP 도구 에이전트 — pipx로 격리 설치)
+if command -v hermes &>/dev/null || [[ -x "$HOME/.local/bin/hermes" ]]; then
+  ok "hermes 이미 설치됨"
+elif command -v pipx &>/dev/null || [[ -x "$HOME/.local/bin/pipx" ]]; then
+  info "hermes 설치 중 (pipx install hermes-agent)..."
+  pipx install hermes-agent 2>/dev/null && ok "hermes 설치 완료" \
+    || warn "hermes 설치 실패 (수동: pipx install hermes-agent)"
+else
+  warn "hermes: pipx 필요 — pipx 설치 후 수동: pipx install hermes-agent"
+fi
 
-# higgsfield CLI (있으면)
-command -v higgsfield &>/dev/null && ok "higgsfield 이미 있음" || {
-  npm install -g higgsfield-cli 2>/dev/null && ok "higgsfield 설치 완료" || warn "higgsfield 설치 실패 (선택사항)"
-}
+# [7] OpenClaw (브라우저 자동화 에이전트)
+install_provider "openclaw" "npm install -g openclaw"
 
-# gbrain (bun 필요)
+# [8] Higgsfield CLI (이미지·영상 생성)
+if command -v higgsfield &>/dev/null; then
+  ok "higgsfield 이미 설치됨"
+else
+  info "Higgsfield CLI 설치 중..."
+  npm install -g @higgsfield/cli@latest 2>/dev/null && ok "higgsfield 설치 완료" \
+    || warn "higgsfield 설치 실패 (수동: npm install -g @higgsfield/cli@latest)"
+fi
+
+# [9] gbrain (bun 필요 — 지식그래프 MCP)
 if command -v gbrain &>/dev/null || [[ -x "$HOME/.bun/bin/gbrain" ]]; then
   ok "gbrain 이미 설치됨"
 elif [[ -n "$BUN" && -x "$BUN" ]]; then
@@ -646,17 +675,21 @@ check_cmd() {
     || echo -e "  ${RED}✗${NC} $name (미설치)"
 }
 
-check_cmd "Node.js"       "node"
-check_cmd "PM2"           "pm2"
-check_cmd "Redis"         "redis-cli"
-check_cmd "Claude Code"   "claude"
-check_cmd "Codex"         "codex"
-check_cmd "OpenCode"      "opencode"
-check_cmd "gh + Copilot"  "gh"
+check_cmd "Node.js"            "node"
+check_cmd "PM2"               "pm2"
+check_cmd "Redis"             "redis-cli"
+check_cmd "Claude Code"       "claude"
+check_cmd "Codex (OpenAI)"    "codex"
+check_cmd "OpenCode"          "opencode"
+check_cmd "gh + Copilot"      "gh"
 check_cmd "AGY (Antigravity)" "agy"
-check_cmd "Cursor"        "cursor"
-check_cmd "bun"           "bun"
-check_cmd "gbrain"        "gbrain"
+check_cmd "cursor-agent"      "cursor-agent"
+check_cmd "Hermes"            "hermes"
+check_cmd "OpenClaw"          "openclaw"
+check_cmd "Higgsfield"        "higgsfield"
+check_cmd "bun"               "bun"
+check_cmd "gbrain"            "gbrain"
+check_cmd "pipx"              "pipx"
 [[ "$OS" == "mac" && "$IS_ARM64" == "true" ]] && check_cmd "mlx-lm (Mac)" "mlx_lm.server"
 [[ "$OS" != "mac" ]] && check_cmd "Ollama (Linux)" "ollama"
 
