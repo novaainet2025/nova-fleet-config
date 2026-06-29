@@ -24,8 +24,13 @@ LOG_DIR="$HOME/.claude/logs"
 INTER_BIN_CANDIDATES=(
   "$HOME/.claude/plugins/cache/inter-session/inter-session/0.1.2/skills/inter-session/bin"
   "$HOME/.claude/plugins/cache/inter-session/inter-session/0.1.1/skills/inter-session/bin"
+  "$HOME/.claude/plugins/cache/inter-session/inter-session/0.1.0/skills/inter-session/bin"
   "$HOME/.claude/skills/inter-session/bin"
 )
+# 동적 탐지: 버전 디렉터리를 glob으로 검색
+for _d in "$HOME/.claude/plugins/cache/inter-session/inter-session"/*/skills/inter-session/bin; do
+  [[ -f "$_d/send.py" ]] && INTER_BIN_CANDIDATES=("$_d" "${INTER_BIN_CANDIDATES[@]}")
+done
 COORDINATOR="nova-macstudio-cli"
 REINSTALL=false
 for arg in "${@:-}"; do [[ "$arg" == "--reinstall" ]] && REINSTALL=true; done
