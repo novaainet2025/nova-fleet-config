@@ -132,8 +132,14 @@ _ram_gb() {
 }
 
 # 홈 디렉터리 여유 디스크 (GB, 정수 반환)
+# macOS: BSD df는 -BG 미지원 → 512바이트 블록을 GB로 변환
+# Linux: GNU df -BG 사용
 _disk_free_gb() {
-  df -BG "$HOME" 2>/dev/null | awk 'NR==2{gsub("G",""); print $4+0}' || echo 0
+  if [[ "$OS" == "mac" ]]; then
+    df "$HOME" 2>/dev/null | awk 'NR==2{printf "%.0f\n", $4/2097152}' || echo 0
+  else
+    df -BG "$HOME" 2>/dev/null | awk 'NR==2{gsub("G",""); print $4+0}' || echo 0
+  fi
 }
 
 # 로컬 AI 설치 가능 여부 판정 (ram_min_gb disk_min_gb label)
