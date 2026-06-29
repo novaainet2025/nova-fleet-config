@@ -14,6 +14,44 @@
 set -euo pipefail
 IFS=$'\n\t'
 
+# ══════════════════════════════════════════════════════════════════════════
+# ⚠  Windows 환경 감지 — WSL이 아닌 Git Bash/Cygwin에서 실행 시 즉시 차단
+# ══════════════════════════════════════════════════════════════════════════
+# 판정 기준:
+#   · MSYSTEM 설정됨  → Git Bash (MINGW64 / MSYS2 / UCRT64)
+#   · OSTYPE=cygwin   → Cygwin
+#   · /proc/version 없음 + USERPROFILE 있음 → Windows 네이티브 bash
+_IS_WIN_BASH=false
+[[ "${MSYSTEM:-}" =~ ^(MINGW|MSYS|UCRT) ]] && _IS_WIN_BASH=true
+[[ "${OSTYPE:-}" == "cygwin" ]] && _IS_WIN_BASH=true
+# USERPROFILE는 Windows 환경에서만 설정됨 (Git Bash는 /proc/version 없음)
+if [[ "$_IS_WIN_BASH" == "false" ]] && [[ -n "${USERPROFILE:-}" ]] && [[ ! -f /proc/version ]]; then
+  _IS_WIN_BASH=true
+fi
+
+if [[ "$_IS_WIN_BASH" == "true" ]]; then
+  echo ""
+  echo "  ╔══════════════════════════════════════════════════════════╗"
+  echo "  ║  ⚠  Windows 환경 (Git Bash / Cygwin) 에서 실행됨       ║"
+  echo "  ║                                                          ║"
+  echo "  ║  이 스크립트는 WSL(Ubuntu) 내부에서 실행해야 합니다.    ║"
+  echo "  ╚══════════════════════════════════════════════════════════╝"
+  echo ""
+  echo "  ─── WSL 터미널에서 실행하세요 ─────────────────────────────"
+  echo ""
+  echo "    1) Win+R → 'wsl' 입력 (또는 Ubuntu 앱 실행)"
+  echo ""
+  echo "    2) WSL 터미널에서:"
+  echo "       curl -fsSL https://raw.githubusercontent.com/novaainet2025/nova-fleet-config/main/install/bootstrap.sh \\"
+  echo "         -o /tmp/bootstrap.sh && bash /tmp/bootstrap.sh"
+  echo ""
+  echo "  ─── 또는 PowerShell (관리자) ──────────────────────────────"
+  echo "    irm https://raw.githubusercontent.com/novaainet2025/nova-fleet-config/main/install/install.ps1 | iex"
+  echo "    (WSL2 설치 + Ubuntu + bootstrap.sh 자동 실행)"
+  echo ""
+  exit 1
+fi
+
 # curl|bash 파이프 실행 시 stdin이 닫혀있는 경우 /dev/tty로 복원
 # 인터랙티브 설치 스크립트(bun, nvm 등)가 stdin을 읽으려 할 때 실패 방지
 if [ ! -t 0 ] && [ -e /dev/tty ]; then
@@ -71,6 +109,15 @@ IS_ARM64=false
 [[ "$ARCH" == "arm64" || "$ARCH" == "aarch64" ]] && IS_ARM64=true
 
 ok "OS=$OS, Arch=$ARCH, WSL=$IS_WSL"
+
+# systemd 동작 여부 헬퍼 (Redis·Tailscale·PM2 서비스 등록에 사용)
+# WSL2 기본: systemd 비활성(false). /etc/wsl.conf에 [boot] systemd=true 시 활성
+_systemd_ok() {
+  # PID 1이 systemd이거나 systemctl이 정상 응답하면 true
+  [[ "$(ps -p 1 -o comm= 2>/dev/null)" == "systemd" ]] \
+    || systemctl is-system-running &>/dev/null 2>&1
+}
+
 PROJECT_DIR="$HOME/project"
 FLEET_DIR="$HOME/nova-fleet-config"
 NCO_DIR="$PROJECT_DIR/nco"
@@ -166,10 +213,17 @@ if [[ "$OS" == "mac" ]]; then
 else
   command -v redis-cli &>/dev/null && ok "Redis 이미 설치됨" || {
     sudo apt-get install -y redis-server
-    sudo systemctl enable redis-server
-    sudo systemctl start redis-server
   }
-  redis-cli ping &>/dev/null && ok "Redis 응답: PONG" || warn "Redis 응답 없음"
+  # 서비스 시작 — systemd 유무에 따라 분기
+  if _systemd_ok; then
+    sudo systemctl enable redis-server 2>/dev/null || true
+    sudo systemctl start redis-server 2>/dev/null || true
+  else
+    # WSL (no-systemd) — service 명령 또는 직접 실행
+    sudo service redis-server start 2>/dev/null \
+      || sudo redis-server --daemonize yes 2>/dev/null || true
+  fi
+  redis-cli ping &>/dev/null && ok "Redis 응답: PONG" || warn "Redis 응답 없음 (수동: sudo service redis-server start)"
 fi
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -192,14 +246,22 @@ else
     info "Tailscale 설치 중..."
     curl -fsSL https://tailscale.com/install.sh | sh && ok "Tailscale 설치 완료"
   fi
-  # 서비스 자동 시작 (WSL은 systemd 지원 여부 확인)
-  if pidof systemd &>/dev/null || systemctl is-system-running &>/dev/null 2>&1; then
+  # 서비스 자동 시작 — systemd 유무에 따라 분기
+  if _systemd_ok; then
     sudo systemctl enable tailscaled 2>/dev/null || true
     sudo systemctl start tailscaled 2>/dev/null && ok "Tailscale 서비스 시작됨" || true
   else
-    # WSL1 / systemd 없는 환경
-    sudo tailscaled --state=/var/lib/tailscale/tailscaled.state &>/dev/null &
-    ok "Tailscale 데몬 시작됨 (no-systemd)"
+    # WSL (no-systemd) — 이미 실행 중이면 스킵, 아니면 데몬 시작
+    if pgrep -x tailscaled &>/dev/null; then
+      ok "Tailscale 데몬 이미 실행 중"
+    else
+      sudo mkdir -p /var/lib/tailscale
+      nohup sudo tailscaled --state=/var/lib/tailscale/tailscaled.state \
+        2>/dev/null &>/dev/null &
+      sleep 1
+      pgrep -x tailscaled &>/dev/null && ok "Tailscale 데몬 시작됨 (no-systemd)" \
+        || warn "Tailscale 데몬 시작 실패 (수동: sudo tailscaled &)"
+    fi
   fi
   warn "Tailscale 로그인 필요: sudo tailscale up"
 fi
