@@ -118,6 +118,8 @@ MISSING_PROVIDERS=()
 PRESENT_PROVIDERS=()
 
 # 공통 프로바이더 (로컬 AI 제외 — MLX/Ollama는 하드웨어 조건부)
+# set -u와 declare -A 충돌 방지 (bash 일부 버전에서 key를 변수로 해석)
+set +u
 declare -A PROVIDERS=(
   ["claude"]="npm install -g @anthropic-ai/claude-code"
   ["codex"]="npm install -g @openai/codex"
@@ -134,6 +136,7 @@ declare -A PROVIDERS=(
   ["bun"]="curl -fsSL https://bun.sh/install | bash"
   ["pipx"]="__SKIP__"  # apt/brew로 관리
 )
+set -u  # declare -A 완료 후 재활성
 
 for provider in "${!PROVIDERS[@]}"; do
   if _check_cmd "$provider"; then
