@@ -121,6 +121,41 @@ _systemd_ok() {
     || systemctl is-system-running &>/dev/null 2>&1
 }
 
+# ── 로컬 AI 프로바이더(MLX·Ollama) 사양 헬퍼 ──────────────────────────────
+# RAM 용량 (GB, 정수 반환)
+_ram_gb() {
+  if [[ "$OS" == "mac" ]]; then
+    echo $(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1073741824 ))
+  else
+    echo $(( $(grep -m1 MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}' || echo 0) / 1048576 ))
+  fi
+}
+
+# 홈 디렉터리 여유 디스크 (GB, 정수 반환)
+_disk_free_gb() {
+  df -BG "$HOME" 2>/dev/null | awk 'NR==2{gsub("G",""); print $4+0}' || echo 0
+}
+
+# 로컬 AI 설치 가능 여부 판정 (ram_min_gb disk_min_gb label)
+# 리턴: 0=OK, 1=사양 미달
+_hw_check() {
+  local ram_min="$1" disk_min="$2" label="$3"
+  local ram disk
+  ram=$(_ram_gb); disk=$(_disk_free_gb)
+  if (( ram < ram_min )); then
+    warn "${label} 스킵: RAM ${ram}GB < 최소 ${ram_min}GB 필요"
+    info "  → 현재 사양: RAM ${ram}GB / Disk여유 ${disk}GB"
+    return 1
+  fi
+  if (( disk < disk_min )); then
+    warn "${label} 스킵: 디스크 여유 ${disk}GB < 최소 ${disk_min}GB 필요 (모델 저장 공간)"
+    info "  → 현재 사양: RAM ${ram}GB / Disk여유 ${disk}GB"
+    return 1
+  fi
+  ok "${label} 사양 충족: RAM ${ram}GB / Disk여유 ${disk}GB"
+  return 0
+}
+
 PROJECT_DIR="$HOME/project"
 FLEET_DIR="$HOME/nova-fleet-config"
 NCO_DIR="$PROJECT_DIR/nco"
@@ -567,11 +602,18 @@ else
 fi
 
 # MLX (Mac Apple Silicon 전용 — 조건 불충족 시 완전 스킵)
+# 최소 사양: Apple Silicon(arm64) + RAM 8GB+ + Disk 여유 10GB+
+# 권장 사양: RAM 16GB+ (7B 이상 모델), 32GB+ (26B 모델)
 if [[ "$OS" == "mac" && "$IS_ARM64" == "true" ]]; then
-  python3 -c "import mlx_lm" 2>/dev/null && ok "mlx-lm 이미 설치됨" || {
-    info "mlx-lm 설치 중 (Apple Silicon)..."
-    pip3 install mlx-lm 2>/dev/null && ok "mlx-lm 설치 완료" || warn "mlx-lm 설치 실패"
-  }
+  if _hw_check 8 10 "MLX (Apple Silicon LLM)"; then
+    python3 -c "import mlx_lm" 2>/dev/null && ok "mlx-lm 이미 설치됨" || {
+      info "mlx-lm 설치 중 (Apple Silicon)..."
+      pip3 install mlx-lm 2>/dev/null && ok "mlx-lm 설치 완료" || warn "mlx-lm 설치 실패"
+    }
+  fi
+  # 경고: RAM < 16GB이면 대형 모델 실행 불가 안내
+  _MLX_RAM=$(_ram_gb)
+  (( _MLX_RAM < 16 )) && warn "MLX 대형 모델(7B+) 실행 권장 RAM: 16GB (현재 ${_MLX_RAM}GB)" || true
 elif [[ "$OS" == "mac" && "$IS_ARM64" == "false" ]]; then
   info "MLX: Apple Silicon(arm64) 전용 — Intel Mac 스킵"
 else
@@ -580,6 +622,8 @@ fi
 
 # Ollama (Linux/WSL 전용)
 # Mac은 MLX 사용 → 설치 안 함
+# 최소 사양: RAM 8GB+ + Disk 여유 10GB+ (소형 모델 기준)
+# 권장 사양: RAM 16GB+ (7B 모델), GPU(CUDA) 있으면 성능 대폭 향상
 # WSL은 Windows 호스트 Ollama를 우선 탐지 → 있으면 WSL 내 설치 스킵
 if [[ "$OS" == "mac" ]]; then
   info "Ollama: Mac 환경 — MLX 사용 (스킵)"
@@ -593,17 +637,21 @@ elif [[ "$IS_WSL" == "true" ]]; then
     WIN_OLLAMA=true
   fi
   if [[ "$WIN_OLLAMA" == "false" ]]; then
-    command -v ollama &>/dev/null && ok "Ollama (WSL) 이미 설치됨" || {
+    if command -v ollama &>/dev/null; then
+      ok "Ollama (WSL) 이미 설치됨"
+    elif _hw_check 8 10 "Ollama (WSL)"; then
       info "Windows Ollama 미감지 — WSL 내 Ollama 설치 중..."
       curl -fsSL https://ollama.ai/install.sh | sh && ok "Ollama 설치 완료" || warn "Ollama 설치 실패"
-    }
+    fi
   fi
 else
   # 순수 Linux
-  command -v ollama &>/dev/null && ok "ollama 이미 설치됨" || {
+  if command -v ollama &>/dev/null; then
+    ok "ollama 이미 설치됨"
+  elif _hw_check 8 10 "Ollama (Linux)"; then
     info "Ollama 설치 중..."
     curl -fsSL https://ollama.ai/install.sh | sh && ok "Ollama 설치 완료" || warn "Ollama 설치 실패"
-  }
+  fi
 fi
 
 # PATH에 ~/.local/bin 추가
@@ -851,8 +899,18 @@ check_cmd "bun"               "bun"
 check_cmd "gbrain"            "gbrain"
 check_cmd "pipx"              "pipx"
 check_cmd "python3"           "python3"
-[[ "$OS" == "mac" && "$IS_ARM64" == "true" ]] && check_cmd "mlx-lm (Mac)" "mlx_lm.server"
-[[ "$OS" != "mac" ]] && check_cmd "Ollama (Linux)" "ollama"
+# 로컬 AI — 사양 정보와 함께 표시
+_DR_RAM=$(_ram_gb); _DR_DISK=$(_disk_free_gb)
+echo -e "  ${CYAN}  시스템 사양: RAM ${_DR_RAM}GB / Disk여유 ${_DR_DISK}GB${NC}"
+if [[ "$OS" == "mac" && "$IS_ARM64" == "true" ]]; then
+  check_cmd "mlx-lm (Mac arm64)"  "mlx_lm.server"
+  (( _DR_RAM < 8 ))  && echo -e "  ${YELLOW}  ⚠ MLX: RAM ${_DR_RAM}GB < 최소 8GB${NC}"
+  (( _DR_RAM < 16 )) && (( _DR_RAM >= 8 )) && echo -e "  ${YELLOW}  ⚠ MLX: 대형 모델(7B+) 권장 RAM 16GB (현재 ${_DR_RAM}GB)${NC}"
+elif [[ "$OS" != "mac" ]]; then
+  check_cmd "Ollama (Linux/WSL)"  "ollama"
+  (( _DR_RAM < 8 ))  && echo -e "  ${YELLOW}  ⚠ Ollama: RAM ${_DR_RAM}GB < 최소 8GB (미설치됨)${NC}"
+  (( _DR_DISK < 10 )) && echo -e "  ${YELLOW}  ⚠ Ollama: Disk여유 ${_DR_DISK}GB < 최소 10GB${NC}"
+fi
 [[ "$OS" != "mac" ]] && check_cmd "Tailscale"      "tailscale"
 
 # inter-session venv 체크
