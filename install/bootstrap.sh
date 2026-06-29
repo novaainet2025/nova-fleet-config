@@ -363,8 +363,13 @@ CURSOR_SHIM
   fi
 fi
 
-# gemini CLI
-install_provider "gemini" "npm install -g @google/gemini-cli 2>/dev/null || true"
+# AGY CLI (Google Antigravity CLI — Gemini CLI 후속)
+command -v agy &>/dev/null && ok "agy (Antigravity CLI) 이미 설치됨" || {
+  info "AGY (Antigravity CLI) 설치 중..."
+  curl -fsSL https://antigravity.google/cli/install.sh 2>/dev/null | bash 2>/dev/null \
+    && ok "agy 설치 완료" \
+    || warn "agy 설치 실패 (수동: https://github.com/google-antigravity/antigravity-cli)"
+}
 
 # higgsfield CLI (있으면)
 command -v higgsfield &>/dev/null && ok "higgsfield 이미 있음" || {
@@ -648,9 +653,8 @@ check_cmd "Claude Code"   "claude"
 check_cmd "Codex"         "codex"
 check_cmd "OpenCode"      "opencode"
 check_cmd "gh + Copilot"  "gh"
-check_cmd "AGY"           "agy"
+check_cmd "AGY (Antigravity)" "agy"
 check_cmd "Cursor"        "cursor"
-check_cmd "Gemini CLI"    "gemini"
 check_cmd "bun"           "bun"
 check_cmd "gbrain"        "gbrain"
 [[ "$OS" == "mac" && "$IS_ARM64" == "true" ]] && check_cmd "mlx-lm (Mac)" "mlx_lm.server"
