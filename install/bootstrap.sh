@@ -355,9 +355,18 @@ else
     ok "gh 이미 설치됨"
   fi
 fi
-# copilot extension
-gh extension list 2>/dev/null | grep -q copilot && ok "gh-copilot 이미 설치됨" || {
-  gh extension install github/gh-copilot 2>/dev/null && ok "gh-copilot 설치 완료" || warn "gh-copilot 설치 실패 (gh auth login 후 재시도)"
+# copilot 독립 CLI (NCO provider — `copilot` 명령으로 직접 호출)
+if command -v copilot &>/dev/null; then
+  ok "copilot CLI 이미 설치됨"
+else
+  info "copilot CLI 설치 중..."
+  npm install -g @github/copilot 2>/dev/null && ok "copilot 설치 완료" \
+    || warn "copilot 설치 실패 (수동: npm install -g @github/copilot)"
+fi
+# gh copilot extension (gh copilot explain/suggest 명령용)
+gh extension list 2>/dev/null | grep -q copilot && ok "gh-copilot extension 이미 설치됨" || {
+  gh extension install github/gh-copilot 2>/dev/null && ok "gh-copilot extension 설치 완료" \
+    || warn "gh-copilot extension 설치 실패 (gh auth login 후 재시도)"
 }
 
 # [4] AGY CLI (Google Antigravity CLI — Gemini CLI 공식 후속)
@@ -711,7 +720,8 @@ check_cmd "Redis"             "redis-cli"
 check_cmd "Claude Code"       "claude"
 check_cmd "Codex (OpenAI)"    "codex"
 check_cmd "OpenCode"          "opencode"
-check_cmd "gh + Copilot"      "gh"
+check_cmd "gh (GitHub CLI)"   "gh"
+check_cmd "Copilot CLI"       "copilot"
 check_cmd "AGY (Antigravity)" "agy"
 check_cmd "cursor-agent"      "cursor-agent"
 check_cmd "Hermes"            "hermes"
