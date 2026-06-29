@@ -284,16 +284,33 @@ BUN="${HOME}/.bun/bin/bun"
 # pipx (hermes 의존 — Python 격리 패키지 관리자)
 if ! command -v pipx &>/dev/null && ! [[ -x "$HOME/.local/bin/pipx" ]]; then
   info "pipx 설치 중..."
+  PIPX_INSTALLED=false
   if command -v brew &>/dev/null; then
-    brew install pipx 2>/dev/null && ok "pipx 설치 완료 (brew)" || warn "pipx 설치 실패"
-  else
-    pip3 install --user pipx 2>/dev/null && ok "pipx 설치 완료 (pip)" || warn "pipx 설치 실패"
+    brew install pipx 2>/dev/null && PIPX_INSTALLED=true
+  fi
+  if [[ "$PIPX_INSTALLED" == "false" ]] && command -v apt-get &>/dev/null; then
+    # Ubuntu 22.04+ — apt 우선 (PEP 668 externally-managed 환경에서도 안전)
+    sudo apt-get install -y pipx 2>/dev/null && PIPX_INSTALLED=true
+  fi
+  if [[ "$PIPX_INSTALLED" == "false" ]]; then
+    # fallback: pip3 (--break-system-packages는 PEP 668 차단 우회)
+    pip3 install --user pipx 2>/dev/null \
+      || pip3 install --user --break-system-packages pipx 2>/dev/null \
+      || python3 -m pip install --user pipx 2>/dev/null
+    [[ -x "$HOME/.local/bin/pipx" ]] && PIPX_INSTALLED=true
   fi
   export PATH="$HOME/.local/bin:$PATH"
-  pipx ensurepath 2>/dev/null || true
+  if [[ "$PIPX_INSTALLED" == "true" ]] || command -v pipx &>/dev/null || [[ -x "$HOME/.local/bin/pipx" ]]; then
+    ok "pipx 설치 완료"
+    pipx ensurepath 2>/dev/null || true
+  else
+    warn "pipx 설치 실패 — hermes는 수동 설치 필요: sudo apt install pipx"
+  fi
 else
   ok "pipx 이미 설치됨"
 fi
+# PATH 갱신 (pipx 설치 후 hermes 섹션에서 바로 사용 가능하도록)
+export PATH="$HOME/.local/bin:$PATH"
 
 install_provider() {
   local name="$1" cmd="$2"
