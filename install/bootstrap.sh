@@ -94,12 +94,12 @@ if [[ "$OS" == "mac" ]]; then
   else
     ok "Homebrew 이미 설치됨"
   fi
-  for pkg in git curl jq; do
+  for pkg in git curl jq unzip; do
     command -v "$pkg" &>/dev/null && ok "$pkg 이미 있음" || brew install "$pkg"
   done
 else
   sudo apt-get update -qq
-  for pkg in git curl jq; do
+  for pkg in git curl jq unzip zstd; do
     command -v "$pkg" &>/dev/null && ok "$pkg 이미 있음" || sudo apt-get install -y "$pkg"
   done
 fi
@@ -293,7 +293,14 @@ install_provider "codex" "npm install -g @openai/codex"
 if [[ "$OS" == "mac" ]]; then
   install_provider "opencode" "brew install opencode"
 else
-  install_provider "opencode" "npm install -g opencode"
+  # Linux/WSL: curl 설치 스크립트 사용 (npm 패키지명 다름)
+  if ! command -v opencode &>/dev/null; then
+    info "opencode 설치 중..."
+    curl -fsSL https://opencode.ai/install | bash 2>/dev/null && ok "opencode 설치 완료" \
+      || warn "opencode 설치 실패 (수동: https://opencode.ai)"
+  else
+    ok "opencode 이미 설치됨"
+  fi
 fi
 
 # gh (GitHub CLI) + copilot extension
@@ -374,30 +381,44 @@ else
   warn "gbrain: bun 필요 — bun 설치 후 수동: bun install -g github:garrytan/gbrain"
 fi
 
-# MLX (Mac Apple Silicon 전용)
+# MLX (Mac Apple Silicon 전용 — 조건 불충족 시 완전 스킵)
 if [[ "$OS" == "mac" && "$IS_ARM64" == "true" ]]; then
   python3 -c "import mlx_lm" 2>/dev/null && ok "mlx-lm 이미 설치됨" || {
     info "mlx-lm 설치 중 (Apple Silicon)..."
     pip3 install mlx-lm 2>/dev/null && ok "mlx-lm 설치 완료" || warn "mlx-lm 설치 실패"
   }
+elif [[ "$OS" == "mac" && "$IS_ARM64" == "false" ]]; then
+  info "MLX: Apple Silicon(arm64) 전용 — Intel Mac 스킵"
 else
-  info "MLX: Mac arm64 전용 — 스킵"
+  info "MLX: Mac arm64 전용 — 현재 환경(${OS}/${ARCH}) 스킵"
 fi
 
 # Ollama (Linux/WSL 전용)
-if [[ "$OS" != "mac" ]]; then
+# Mac은 MLX 사용 → 설치 안 함
+# WSL은 Windows 호스트 Ollama를 우선 탐지 → 있으면 WSL 내 설치 스킵
+if [[ "$OS" == "mac" ]]; then
+  info "Ollama: Mac 환경 — MLX 사용 (스킵)"
+elif [[ "$IS_WSL" == "true" ]]; then
+  # WSL: Windows 호스트 Ollama 먼저 탐지 (게이트웨이 IP)
+  GW=$(ip route 2>/dev/null | awk '/default/{print $3; exit}' || echo "")
+  WIN_OLLAMA=false
+  if [[ -n "$GW" ]] && curl -sf --max-time 3 "http://$GW:11434/api/version" &>/dev/null; then
+    ok "Windows 호스트 Ollama 감지: $GW:11434 — WSL 내 설치 스킵"
+    export OLLAMA_WIN_HOST="$GW"
+    WIN_OLLAMA=true
+  fi
+  if [[ "$WIN_OLLAMA" == "false" ]]; then
+    command -v ollama &>/dev/null && ok "Ollama (WSL) 이미 설치됨" || {
+      info "Windows Ollama 미감지 — WSL 내 Ollama 설치 중..."
+      curl -fsSL https://ollama.ai/install.sh | sh && ok "Ollama 설치 완료" || warn "Ollama 설치 실패"
+    }
+  fi
+else
+  # 순수 Linux
   command -v ollama &>/dev/null && ok "ollama 이미 설치됨" || {
     info "Ollama 설치 중..."
     curl -fsSL https://ollama.ai/install.sh | sh && ok "Ollama 설치 완료" || warn "Ollama 설치 실패"
   }
-  # WSL: Windows 호스트 Ollama 탐지 (Q2 결론: 게이트웨이 IP)
-  if [[ "$IS_WSL" == "true" ]]; then
-    GW=$(ip route 2>/dev/null | awk '/default/{print $3; exit}' || echo "")
-    if [[ -n "$GW" ]] && curl -sf "http://$GW:11434/api/version" &>/dev/null; then
-      ok "Windows 호스트 Ollama 감지: $GW:11434"
-      export OLLAMA_WIN_HOST="$GW"
-    fi
-  fi
 fi
 
 # PATH에 ~/.local/bin 추가
