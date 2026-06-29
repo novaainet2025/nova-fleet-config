@@ -14,6 +14,12 @@
 set -euo pipefail
 IFS=$'\n\t'
 
+# curl|bash 파이프 실행 시 stdin이 닫혀있는 경우 /dev/tty로 복원
+# 인터랙티브 설치 스크립트(bun, nvm 등)가 stdin을 읽으려 할 때 실패 방지
+if [ ! -t 0 ] && [ -e /dev/tty ]; then
+  exec < /dev/tty
+fi
+
 # ── 색상 ──────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
