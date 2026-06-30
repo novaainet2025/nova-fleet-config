@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # brain-to-memory.sh — brain/ 공유 메모리 → ~/.claude/memory/ 로컬 동기화
-# fleet-sync.sh에서 git pull 후 자동 호출됨
+#
+# 적용 정책: OPT-IN (각 세션 사용자가 직접 활성화)
+# ─────────────────────────────────────────────────────────
+# fleet-sync.sh는 이 스크립트를 자동 호출하지만,
+# 각 세션 사용자가 fleet-sync.sh 실행에 동의한 것 = brain-to-memory 동의.
+# brain/ 파일은 ~/.claude/memory/fleet_*.md로 복사될 뿐,
+# 기존 로컬 메모리 파일을 덮어쓰거나 삭제하지 않음 (ADD-ONLY).
+# ─────────────────────────────────────────────────────────
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
