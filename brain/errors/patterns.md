@@ -58,3 +58,9 @@ bash ~/nova-fleet-config/brain/scripts/brain-capture.sh \
   --cause "근본 원인" \
   --fix "방지책"
 ```
+
+### ERR-007 | fleet-sync dirty-tree pull-failed
+- **발생**: 2026-06-30 10:32 (snt-claude-4 발견)
+- **근본 원인**: git pull --ff-only 전 stash 없음 → 로컬 미커밋 변경 22개로 매 sync pull abort
+- **방지**: pull 전 git stash push --include-untracked, pop 후 충돌 시 theirs 자동 채택
+- **발생 횟수**: 1
