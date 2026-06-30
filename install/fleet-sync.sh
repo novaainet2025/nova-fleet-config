@@ -100,6 +100,22 @@ else
 fi
 
 # ══════════════════════════════════════════════════════════════════════════
+# [2b] Brain 공유 메모리 동기화 — brain/ → ~/.claude/memory/
+# ══════════════════════════════════════════════════════════════════════════
+BRAIN_SYNC="$FLEET_DIR/brain/scripts/brain-to-memory.sh"
+if [[ -f "$BRAIN_SYNC" ]]; then
+  if bash "$BRAIN_SYNC" 2>/dev/null; then
+    ok "brain/ 공유 메모리 동기화 완료"
+    REPORT+=("brain=ok")
+  else
+    warn "brain-to-memory.sh 실패"
+    REPORT+=("brain=failed")
+  fi
+else
+  REPORT+=("brain=skipped")
+fi
+
+# ══════════════════════════════════════════════════════════════════════════
 # [3] 프로바이더 상태 체크 + 미설치 자동 재설치
 # ══════════════════════════════════════════════════════════════════════════
 info "[3/5] 프로바이더 체크..."
