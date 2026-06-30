@@ -143,9 +143,17 @@ for _gb in "$HOME/.bun/bin/gbrain" "$HOME/.local/bin/gbrain" "$(command -v gbrai
   [[ -x "$_gb" ]] && GBRAIN_BIN="$_gb" && break
 done
 if [[ -n "$GBRAIN_BIN" ]]; then
+  # brain 미초기화 시 자동 init (--no-embedding: 임베딩 모델은 각 머신이 별도 설정)
+  if ! "$GBRAIN_BIN" config show >/dev/null 2>&1; then
+    if "$GBRAIN_BIN" init --pglite --no-embedding >/dev/null 2>&1; then
+      ok "gbrain: brain 자동 초기화 완료 (--no-embedding, 임베딩은 별도 설정 필요)"
+    else
+      warn "gbrain init 실패 (무시)"
+    fi
+  fi
   if "$GBRAIN_BIN" import "$FLEET_DIR/brain/" >/dev/null 2>&1; then
-    ok "gbrain: brain/ 인덱싱 완료 (임베딩 포함)"
-    # 임베딩 갱신 (stale 페이지만, 있으면)
+    ok "gbrain: brain/ 인덱싱 완료"
+    # 임베딩 갱신 (stale 페이지만, embedding 설정된 머신에서만 유효)
     "$GBRAIN_BIN" embed --stale >/dev/null 2>&1 || true
   else
     warn "gbrain import 실패 (무시)"
