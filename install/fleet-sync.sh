@@ -143,8 +143,10 @@ for _gb in "$HOME/.bun/bin/gbrain" "$HOME/.local/bin/gbrain" "$(command -v gbrai
   [[ -x "$_gb" ]] && GBRAIN_BIN="$_gb" && break
 done
 if [[ -n "$GBRAIN_BIN" ]]; then
-  if "$GBRAIN_BIN" import "$FLEET_DIR/brain/" --no-embed >/dev/null 2>&1; then
-    ok "gbrain: brain/ 인덱싱 완료"
+  if "$GBRAIN_BIN" import "$FLEET_DIR/brain/" >/dev/null 2>&1; then
+    ok "gbrain: brain/ 인덱싱 완료 (임베딩 포함)"
+    # 임베딩 갱신 (stale 페이지만, 있으면)
+    "$GBRAIN_BIN" embed --stale >/dev/null 2>&1 || true
   else
     warn "gbrain import 실패 (무시)"
   fi
