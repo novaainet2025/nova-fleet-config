@@ -165,6 +165,8 @@ log "provider 점검:"; while read -r p ver _; do [ -z "${p:-}" ] && continue; c
 NCO_CFG="$HOME/project/nco/config/ai-providers.json"
 if [ $DRY -eq 0 ] && command -v python3 >/dev/null 2>&1 && [ -f "$NCO_CFG" ]; then
   OLLAMA_UP=0; curl -s -m 3 http://localhost:11434/api/tags >/dev/null 2>&1 && OLLAMA_UP=1
+  # 저사양 머신 sentinel: ~/.claude/.nco-no-ollama 존재 시 강제 비활성 (외장GPU 없음·RAM 8GB 미만)
+  [ -f "$HOME/.claude/.nco-no-ollama" ] && OLLAMA_UP=0
   IS_MAC=0; [ "$(uname -s)" = Darwin ] && IS_MAC=1
   HAS_MLX=0; python3 -c 'import mlx' >/dev/null 2>&1 && HAS_MLX=1
   python3 - "$NCO_CFG" "$OLLAMA_UP" "$IS_MAC" "$HAS_MLX" "$(date +%Y-%m-%d)" << 'PYEOF'
