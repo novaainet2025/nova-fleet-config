@@ -35,7 +35,7 @@
 # nco-mesh      : NCO 백엔드(:6200) 경유, 세션 상태/충돌/위임 관리
 # inter-session : NCO 없이도 동작하는 경량 직통 P2P 메시징 (port 9473)
 #   → NCO 다운 시에도 세션 간 통신 가능
-#   → 외부 에이전트(opencode, gemini CLI 등)와도 통신 가능 (클라이언트 설치 시)
+#   → 외부 에이전트(opencode, agy CLI 등)와도 통신 가능 (클라이언트 설치 시)
 
 BIN="{{HOME}}/.claude/plugins/cache/inter-session/inter-session/0.1.2/skills/inter-session/bin"
 ARGS="${ARGUMENTS:-}"

@@ -79,13 +79,13 @@ bash ~/projects/nco-session-log.sh "nco-solve" "P1" "웹검색" "done" "필요 �
 ## PHASE 2: 아키텍처 설계
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-solve" "P2" "설계" "start" "opencode+gemini 병렬 설계"
+bash ~/projects/nco-session-log.sh "nco-solve" "P2" "설계" "start" "opencode+agy 병렬 설계"
 
 curl -s -X POST http://localhost:6200/api/realtime/parallel \
   -H "Content-Type: application/json" \
   -d "{
     \"prompt\": \"다음 요청을 구현하기 위한 아키텍처를 설계하라. 파일 구조, 인터페이스, 데이터 흐름을 포함할 것. 현재 프로젝트 스택 고려. 요청: $ARGUMENTS\",
-    \"providers\": [\"opencode\", \"gemini\"]
+    \"providers\": [\"opencode\", \"agy\"]
   }" | python3 -m json.tool
 
 bash ~/projects/nco-session-log.sh "nco-solve" "P2" "설계" "done" "설계안 생성 완료"

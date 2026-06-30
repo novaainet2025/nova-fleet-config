@@ -140,7 +140,7 @@ except: print('')
         elif echo "$PROMPT_TEXT" | grep -qE '(리뷰|검토|review|check|audit|보안|security)'; then
             ORCH_HINT="AUTO_REVIEW: cursor-agent + ollama 병렬 리뷰 권장"
         elif echo "$PROMPT_TEXT" | grep -qE '(설계|아키텍처|design|architect|구조|structure)'; then
-            ORCH_HINT="AUTO_DESIGN: opencode + gemini 병렬 설계 검토 권장"
+            ORCH_HINT="AUTO_DESIGN: opencode + agy 병렬 설계 검토 권장"
         elif echo "$PROMPT_TEXT" | grep -qE '(테스트|test|검증|verify|validate)'; then
             ORCH_HINT="AUTO_TEST: codex(생성) + ollama(검증) 병렬 권장"
         elif echo "$PROMPT_TEXT" | grep -qE '(리팩토링|refactor|정리|cleanup|최적화|optimize)'; then

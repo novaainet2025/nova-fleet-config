@@ -110,7 +110,7 @@ Gap   : Skill(nco-gap) | Skill(nco-analyze)
 | 파일 2-4개 / 기능 추가 | `nco_parallel` | [codex, cursor-agent] |
 | 파일 5개+ / 신규 기능 | `nco_commander` | 자동 배분 |
 | 아키텍처 설계 | `nco_task` | opencode |
-| UI / 패턴 | `nco_task` | gemini |
+| UI / 패턴 | `nco_task` | agy |
 | 코드 리뷰 | `nco_task` | cursor-agent |
 | 검증 / 테스트 | `nco_task` | ollama |
 | 조사 / 리서치 | `nco_task` | copilot |
@@ -201,7 +201,7 @@ idle 상태의 다른 Claude 세션이 mesh DM을 자동으로 수신하려면 *
 | `opencode` | 설계·구조·아키텍처 |
 | `codex` | 빠른 구현·버그픽스·다중 파일 수정 |
 | `cursor-agent` | 코드 리뷰·보안·구현 보조 |
-| `gemini` | UI·패턴·설계 |
+| `agy` | UI·패턴·설계 |
 | `copilot` | 리서치·문서 |
 | `ollama` | 검증·테스트·QA |
 | `openrouter` | 무료 백업·다목적 |

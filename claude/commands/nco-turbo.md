@@ -257,7 +257,7 @@ if _lt_all>MAX_LOCAL_TASKS: pr(f'  {Y}⚠ 로컬 {MAX_LOCAL_TASKS}개 제한{RST
 if _rt_all>MAX_REMOTE_TASKS: pr(f'  {Y}⚠ 원격 {MAX_REMOTE_TASKS}개 제한{RST}')
 
 type_col={'implement':C,'review':M,'test':Y,'design':B,'research':GR,'verify':G,'build':BY}
-agent_em={'codex':'⚡','cursor-agent':'🔍','opencode':'🏗️','gemini':'🎨','copilot':'📚','ollama':'🤖','openrouter':'🌐','nvidia':'🧠','local':'🔧'}
+agent_em={'codex':'⚡','cursor-agent':'🔍','opencode':'🏗️','agy':'🎨','copilot':'📚','ollama':'🤖','openrouter':'🌐','nvidia':'🧠','local':'🔧'}
 
 pr(f'  {"ID":4} {"유형":7} {"실행":7} {"제목":22} {"에이전트"}')
 pr(f'  {"─"*65}')

@@ -11,5 +11,5 @@ fi
 
 curl -s -X POST http://localhost:6200/api/realtime/consensus \
   -H "Content-Type: application/json" \
-  -d "{\"prompt\": $(echo "$PROMPT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().strip()))'), \"providers\": [\"opencode\",\"gemini\",\"cursor-agent\"]}" \
+  -d "{\"prompt\": $(echo "$PROMPT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().strip()))'), \"providers\": [\"opencode\",\"agy\",\"cursor-agent\"]}" \
   | python3 -m json.tool 2>/dev/null || echo "[오류] NCO 서버 응답 없음 — /nco-start 로 NCO를 먼저 시작하세요."

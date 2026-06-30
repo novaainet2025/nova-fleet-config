@@ -110,7 +110,7 @@ bash ~/projects/nco-session-log.sh "nco-opus" "P2" "설계" "start" "작업 분�
 **에이전트 매핑 규칙**:
 ```
 설계/구조 분석     → opencode (score:90)
-UI/스키마 설계     → gemini (score:85)
+UI/스키마 설계     → agy (score:85)
 빠른 구현          → codex (score:83)
 다중 파일 수정     → codex 또는 nco_parallel [codex, cursor-agent]
 코드 리뷰          → cursor-agent (score:78)
@@ -137,7 +137,7 @@ UI/스키마 설계     → gemini (score:85)
 
 에러 대비:
   codex 실패 → cursor-agent 또는 openrouter 대체
-  opencode 실패 → gemini+copilot 대체
+  opencode 실패 → agy+copilot 대체
   cursor-agent 실패 → ollama+openrouter 대체
 ```
 
@@ -177,7 +177,7 @@ cat > "$PLAN_FILE" << 'PLAN_EOF'
 - [ ] Gap Rate ≥ 100%
 
 ## 에러 대체 맵
-codex→cursor-agent | cursor-agent→codex | opencode→gemini+copilot | gemini→opencode | ollama→openrouter
+codex→cursor-agent | cursor-agent→codex | opencode→agy+copilot | agy→opencode | ollama→openrouter
 PLAN_EOF
 echo "Plan 생성: $PLAN_FILE"
 ```
@@ -349,11 +349,11 @@ curl -s -X POST http://localhost:6200/api/mesh/send \
 **에이전트 대체 맵**:
 ```
 codex 실패     → cursor-agent 또는 openrouter
-opencode 실패  → gemini + copilot 병렬
+opencode 실패  → agy + copilot 병렬
 cursor-agent   → ollama + openrouter 병렬
 ollama 실패    → openrouter
 copilot 실패   → openrouter
-gemini 실패    → opencode
+agy 실패    → opencode
 openrouter     → vllm (단순) 또는 codex (복잡)
 ```
 
