@@ -117,6 +117,27 @@ _check_cmd() {
 MISSING_PROVIDERS=()
 PRESENT_PROVIDERS=()
 
+# ── 저사양 머신 로컬 LLM 제외 가드 ────────────────────────────────────────
+# 외장 GPU 없음 + 가용 RAM < 8GB 환경에서는 Ollama/MLX를 설치하지 않는다.
+# CPU-only 추론은 성능 저하를 유발하므로 제외 (정책: 2026-06-30 사용자 지시)
+# 해당 머신: snt (Intel UHD, 5.7GB), subnote (Intel UHD 600, 7.8GB)
+_has_gpu() {
+  command -v nvidia-smi &>/dev/null && nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | grep -qv "^$"
+}
+_ram_gb() {
+  # Linux: free -b, macOS: vm_stat 기반
+  if command -v free &>/dev/null; then
+    free -b 2>/dev/null | awk '/^Mem:/{printf "%.0f", $2/1073741824}'
+  else
+    sysctl -n hw.memsize 2>/dev/null | awk '{printf "%.0f", $1/1073741824}'
+  fi
+}
+LOW_SPEC=false
+if ! _has_gpu && [[ "$(_ram_gb)" -lt 8 ]] 2>/dev/null; then
+  LOW_SPEC=true
+  warn "저사양 감지 (GPU없음 + RAM<8GB) — Ollama/MLX 설치 제외"
+fi
+
 # 공통 프로바이더 (로컬 AI 제외 — MLX/Ollama는 하드웨어 조건부)
 # set -u와 declare -A 충돌 방지 (bash 일부 버전에서 key를 변수로 해석)
 set +u
