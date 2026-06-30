@@ -47,3 +47,13 @@ cat >> "$PATTERNS" << PATTERN
 PATTERN
 
 echo "captured: $ID → $PATTERNS"
+
+# gbrain 자동 캡처 (있으면)
+GBRAIN_BIN=""
+for _gb in "$HOME/.bun/bin/gbrain" "$HOME/.local/bin/gbrain" "$(command -v gbrain 2>/dev/null)"; do
+  [[ -x "$_gb" ]] && GBRAIN_BIN="$_gb" && break
+done
+if [[ -n "$GBRAIN_BIN" ]]; then
+  "$GBRAIN_BIN" capture "[$ID] $SUMMARY — 원인: $CAUSE — 방지: $FIX" >/dev/null 2>&1 && \
+    echo "gbrain: $ID 캡처됨" || true
+fi

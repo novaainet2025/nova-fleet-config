@@ -136,6 +136,21 @@ else
 fi
 
 # ══════════════════════════════════════════════════════════════════════════
+# [2c] gbrain — brain/ 인덱싱 (있으면 자동 import, 없으면 스킵)
+# ══════════════════════════════════════════════════════════════════════════
+GBRAIN_BIN=""
+for _gb in "$HOME/.bun/bin/gbrain" "$HOME/.local/bin/gbrain" "$(command -v gbrain 2>/dev/null)"; do
+  [[ -x "$_gb" ]] && GBRAIN_BIN="$_gb" && break
+done
+if [[ -n "$GBRAIN_BIN" ]]; then
+  if "$GBRAIN_BIN" import "$FLEET_DIR/brain/" --no-embed >/dev/null 2>&1; then
+    ok "gbrain: brain/ 인덱싱 완료"
+  else
+    warn "gbrain import 실패 (무시)"
+  fi
+fi
+
+# ══════════════════════════════════════════════════════════════════════════
 # [3] 프로바이더 상태 체크 + 미설치 자동 재설치
 # ══════════════════════════════════════════════════════════════════════════
 info "[3/5] 프로바이더 체크..."
