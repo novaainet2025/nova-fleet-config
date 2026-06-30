@@ -66,12 +66,32 @@ REPORT=()  # 보고서 배열
 # ══════════════════════════════════════════════════════════════════════════
 info "[1/5] nova-fleet-config 최신화..."
 if [[ -d "$FLEET_DIR/.git" ]]; then
+  # dirty-tree 대응: 로컬 변경이 있으면 stash → pull → pop
+  STASHED=false
+  if ! git -C "$FLEET_DIR" diff --quiet 2>/dev/null || \
+     ! git -C "$FLEET_DIR" diff --cached --quiet 2>/dev/null; then
+    git -C "$FLEET_DIR" stash push -m "fleet-sync auto-stash $(date +%Y%m%d-%H%M%S)" \
+      --include-untracked 2>/dev/null && STASHED=true \
+      || warn "stash 실패 — pull 시도 계속"
+  fi
+
   PULL=$(git -C "$FLEET_DIR" pull --ff-only 2>&1 || echo "pull-failed")
+
+  # stash pop (충돌 시 theirs 채택으로 자동 해결)
+  if [[ "$STASHED" == true ]]; then
+    if ! git -C "$FLEET_DIR" stash pop 2>/dev/null; then
+      warn "stash pop 충돌 — upstream 우선 채택으로 자동 해결"
+      git -C "$FLEET_DIR" checkout --theirs . 2>/dev/null || true
+      git -C "$FLEET_DIR" add -A 2>/dev/null || true
+      git -C "$FLEET_DIR" stash drop 2>/dev/null || true
+    fi
+  fi
+
   if echo "$PULL" | grep -qiE "Already up to date|up-to-date|최신"; then
     ok "설정 최신 (변경 없음)"
     REPORT+=("config=up-to-date")
   elif echo "$PULL" | grep -q "pull-failed"; then
-    warn "git pull 실패 (로컬 변경 있거나 네트워크 오류)"
+    warn "git pull 실패 (네트워크 오류 또는 fast-forward 불가)"
     REPORT+=("config=pull-failed")
   else
     ok "설정 업데이트됨 ↑"
