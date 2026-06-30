@@ -350,7 +350,7 @@ PROJECT_NAME=$(basename "${PROJECT_DIR:-project}")
 
 # ── 에이전트 라벨 사전 (등록되지 않은 ID는 자동 슬러그 처리) ──
 declare -A SHORT=(
-  ["claude-code"]="Cla" ["opencode"]="Opn" ["gemini"]="Gem"
+  ["claude-code"]="Cla" ["opencode"]="Opn" ["agy"]="Agy"
   ["codex"]="Cdx" ["cursor-agent"]="Cur"
   ["copilot"]="Cop" ["openrouter"]="ORT" ["nvidia"]="NIM"
   ["ollama"]="OLL" ["higgsfield"]="Hig"
@@ -414,14 +414,14 @@ if not ids:
         pass
 
 if not ids:
-    fallback = ["claude-code","opencode","gemini","codex","cursor-agent","copilot","openrouter","nvidia","ollama","higgsfield"]
+    fallback = ["claude-code","opencode","agy","codex","cursor-agent","copilot","openrouter","nvidia","ollama","higgsfield"]
     ids = [x for x in fallback if x not in evicted]
 
 print("\n".join(ids))
 PYEOF
 )
 if [ "${#ORDER[@]}" -eq 0 ]; then
-  ORDER=("claude-code" "opencode" "gemini" "codex" "cursor-agent" "copilot" "openrouter" "nvidia" "ollama" "higgsfield")
+  ORDER=("claude-code" "opencode" "agy" "codex" "cursor-agent" "copilot" "openrouter" "nvidia" "ollama" "higgsfield")
 fi
 
 # ── 에이전트 상태 표시 ─────────────────────────────────────────

@@ -1,7 +1,7 @@
 # provider CLI  버전핀(canonical=claude-3 기준, 미정은 latest)
 claude        2.1.x
 codex         0.136
-gemini        0.44.1
+agy           1.0.13
 cursor-agent  2026.06.02
 copilot       1.0.58
 opencode      1.15.13

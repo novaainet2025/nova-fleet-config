@@ -65,7 +65,7 @@ except:
 cli_checks = [
     ('claude-code', ['claude', '--version']),
     ('opencode',    ['opencode', '--version']),
-    ('gemini',      ['gemini', '--version']),
+    ('agy',         ['agy', '--version']),
     ('codex',       ['codex', '--version']),
     ('cursor-agent',['cursor-agent', '--version']),
     ('copilot',     ['copilot', '--version']),
@@ -109,7 +109,7 @@ except Exception as e:
 daemon_map = {d['id']: d for d in daemons.get('daemons', [])}
 
 providers = {}
-for pid in ['claude-code','opencode','gemini','codex','cursor-agent','copilot','openrouter','nvidia','ollama']:
+for pid in ['claude-code','opencode','agy','codex','cursor-agent','copilot','openrouter','nvidia','ollama']:
     d = daemon_map.get(pid, {})
     p = {
         'id': pid,
