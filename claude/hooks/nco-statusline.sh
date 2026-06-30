@@ -368,7 +368,7 @@ DAEMONS=""
 # 우선순위:
 #   1. 라이브 /api/daemons — enabled=true 만, evicted_providers 제외
 #   2. health.json — nco-health-monitor.sh 캐시 (백엔드 다운 시)
-#   3. 하드코딩 폴백 (aider 퇴출 반영, 2026-05-14)
+#   3. 하드코딩 폴백
 _CAPS_FILE="{{HOME}}/.claude/nco-perf/capabilities.json"
 _HEALTH_FILE="{{HOME}}/.claude/nco-perf/health.json"
 ORDER=()

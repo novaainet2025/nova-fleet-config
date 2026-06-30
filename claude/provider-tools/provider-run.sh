@@ -168,16 +168,6 @@ run_cli() {
       copilot --plan -p "$prompt" --allow-all "${extra_args[@]}"
       ;;
 
-    # ── Aider ──────────────────────────────────────────────
-    aider:message)
-      _log "Aider message"
-      aider --message "$prompt" --yes --no-pretty "${extra_args[@]}"
-      ;;
-    aider:architect)
-      _log "Aider architect"
-      aider --architect --message "$prompt" --yes --no-pretty "${extra_args[@]}"
-      ;;
-
     # ── MLX ────────────────────────────────────────────────
     mlx:generate)
       local model="${MLX_MODEL:-/Users/nova-ai/project/LM-models/mlx/gemma-4-26b-a4b-it-4bit}"

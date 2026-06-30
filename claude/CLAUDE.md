@@ -208,7 +208,6 @@ idle 상태의 다른 Claude 세션이 mesh DM을 자동으로 수신하려면 *
 | `nvidia` | Reasoner·복잡 추론 |
 | `higgsfield` | 이미지·영상 생성 전용 (FLUX.2, Veo 3.1, Kling) |
 
-> **참고**: `aider`는 2026-05-14 퇴출(OpenRouter 401). 다중 파일 수정은 `codex` 또는 `nco_parallel [codex, cursor-agent]` 사용.
 
 ---
 

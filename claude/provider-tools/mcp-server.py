@@ -60,7 +60,7 @@ def build_tools() -> list:
             "properties": {
                 "ai": {
                     "type": "string",
-                    "description": "프로바이더 ID (codex, opencode, gemini, cursor-agent, hermes, copilot, aider, mlx, nvidia, gemini-deep, openrouter, higgsfield, openclaw)"
+                    "description": "프로바이더 ID (codex, opencode, gemini, cursor-agent, hermes, copilot, mlx, nvidia, gemini-deep, openrouter, higgsfield, openclaw)"
                 },
                 "tool": {
                     "type": "string",

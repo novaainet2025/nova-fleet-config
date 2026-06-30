@@ -259,33 +259,6 @@
         }
       }
     },
-    "aider": {
-      "name": "Aider",
-      "binary": "/opt/homebrew/bin/aider",
-      "type": "cli",
-      "role": "Engineer",
-      "score": 72,
-      "headless": true,
-      "tools": {
-        "message": {
-          "desc": "비대화형 메시지 실행 (코드 수정)",
-          "cmd": ["aider", "--message", "{prompt}", "--yes", "--no-pretty"],
-          "options": {
-            "--model {model}": "모델 지정",
-            "--architect": "아키텍트 모드",
-            "--edit-format diff": "diff 형식 편집",
-            "--no-auto-commits": "자동 커밋 비활성화",
-            "--no-git": "git 비활성화"
-          },
-          "example": "aider --message 'Refactor UserService to use dependency injection' --yes --no-pretty"
-        },
-        "architect": {
-          "desc": "아키텍트 모드 — 코드 설계 후 구현",
-          "cmd": ["aider", "--architect", "--message", "{prompt}", "--yes", "--no-pretty"],
-          "example": "aider --architect --message 'Redesign auth flow using JWT' --yes"
-        }
-      }
-    },
     "mlx": {
       "name": "MLX LM (Apple Silicon 로컬)",
       "binary": "/Users/nova-ai/.local/bin/mlx_lm.generate",

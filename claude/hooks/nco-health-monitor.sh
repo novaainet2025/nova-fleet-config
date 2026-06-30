@@ -67,7 +67,6 @@ cli_checks = [
     ('opencode',    ['opencode', '--version']),
     ('gemini',      ['gemini', '--version']),
     ('codex',       ['codex', '--version']),
-    # aider 퇴출됨 (2026-05-14, OpenRouter 401) — 헬스 체크 제외
     ('cursor-agent',['cursor-agent', '--version']),
     ('copilot',     ['copilot', '--version']),
 ]
