@@ -64,3 +64,9 @@ bash ~/nova-fleet-config/brain/scripts/brain-capture.sh \
 - **근본 원인**: git pull --ff-only 전 stash 없음 → 로컬 미커밋 변경 22개로 매 sync pull abort
 - **방지**: pull 전 git stash push --include-untracked, pop 후 충돌 시 theirs 자동 채택
 - **발생 횟수**: 1
+
+### ERR-008 | 동일 Mac에서 두 CC 세션이 같은 statusline 이름(claude-1) 표시
+- **발생**: 2026-06-30 11:10 (nova-macstudio-claude-1)
+- **근본 원인**: user-prompt-nco-context.sh가 NCO_NAME 환경변수 비어있을 때만 PID 파일 조회 → Warp 터미널에서 NCO_NAME=claude-1 상속된 세션 2는 블록 전체 스킵, claude-2.pid 미생성
+- **방지**: ALWAYS check PID file first (PID match > inherited env). 충돌 감지 시 다음 번호 자동 할당. user-prompt-nco-context.sh 25-35행 교체. nova-fleet-config commit으로 전 세션 배포
+- **발생 횟수**: 1

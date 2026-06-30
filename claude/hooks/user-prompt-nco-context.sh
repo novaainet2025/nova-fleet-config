@@ -22,16 +22,39 @@ if [ -z "$NCO_SESSION_ID" ]; then
   NCO_SESSION_ID="${NCO_SESSION_ID:-${PPID:-$$}}"
 fi
 
-# Resolve NCO_NAME: env var > PID-file reservation
-if [ -z "$NCO_NAME" ]; then
-  for _pf in /tmp/nco-names/claude-*.pid; do
-    [ -f "$_pf" ] || continue
-    _rp=$(cat "$_pf" 2>/dev/null | tr -d '[:space:]')
-    if [ "$_rp" = "$NCO_SESSION_ID" ]; then
-      NCO_NAME=$(basename "$_pf" .pid)
-      break
+# Resolve NCO_NAME: ALWAYS check PID-file first (overrides inherited env to prevent duplicate names)
+_found_name=""
+for _pf in /tmp/nco-names/claude-*.pid; do
+  [ -f "$_pf" ] || continue
+  _rp=$(cat "$_pf" 2>/dev/null | tr -d '[:space:]')
+  if [ "$_rp" = "$NCO_SESSION_ID" ]; then
+    _found_name=$(basename "$_pf" .pid)
+    break
+  fi
+done
+if [ -n "$_found_name" ]; then
+  NCO_NAME="$_found_name"  # ground-truth: PID file match wins over inherited env
+elif [ -n "$NCO_NAME" ]; then
+  # inherited env — check for conflict (another session already owns this name)
+  _cpf="/tmp/nco-names/${NCO_NAME}.pid"
+  if [ -f "$_cpf" ]; then
+    _cpid=$(cat "$_cpf" 2>/dev/null | tr -d '[:space:]')
+    if [ "$_cpid" != "$NCO_SESSION_ID" ]; then
+      # conflict: find next available slot
+      _n=1; while [ -f "/tmp/nco-names/claude-${_n}.pid" ]; do _n=$((_n+1)); done
+      echo "$NCO_SESSION_ID" > "/tmp/nco-names/claude-${_n}.pid" 2>/dev/null
+      NCO_NAME="claude-${_n}"
     fi
-  done
+    # else: inherited name matches pid file — already registered, keep
+  else
+    # inherited name, no file yet — register it
+    echo "$NCO_SESSION_ID" > "$_cpf" 2>/dev/null
+  fi
+else
+  # no env, no pid file — assign next slot
+  _n=1; while [ -f "/tmp/nco-names/claude-${_n}.pid" ]; do _n=$((_n+1)); done
+  echo "$NCO_SESSION_ID" > "/tmp/nco-names/claude-${_n}.pid" 2>/dev/null
+  NCO_NAME="claude-${_n}"
 fi
 MY_NAME="${NCO_NAME:-cli}"
 
