@@ -116,7 +116,7 @@ Place `summary` and `outcome` first (high-priority info), append JSON path or in
 done: outcome=done, summary='Build succeeded. Full evidence at .claude/data/inter-session/messages.log (msg_id로 grep)'
 ```
 
-Receivers then fetch full packet from `~/.llm/last-handoff.json` by session ID lookup.
+Receivers then fetch the full packet from `~/.claude/data/inter-session/messages.log` (JSONL) by msg_id lookup.
 
 ---
 
@@ -145,11 +145,30 @@ Usage: `python send.py task_id "desc" done "result" '[{"tier":"T1","method":"fil
 ### Phase 2: Receiver validate.py (Week 2)
 ```python
 import json, sys
+
 packet = json.loads(sys.argv[1])
-min_tier = {"done": "T1", "partial": "T1", "failed": "T3", "question": "T4"}
-tiers = [e["tier"] for e in packet.get("evidence", [])]
-if packet["outcome"] != "question" and not any(t >= min_tier.get(packet["outcome"], "T4") for t in tiers):
-    print(f"REJECT: {packet['outcome']} requires >= {min_tier[packet['outcome']]} evidence. Got {tiers}")
+# 티어는 숫자 랭크로 비교한다 (낮을수록 강한 증거). 문자열 비교는 "T4" >= "T1"이
+# 사전순으로 참이 되어 정책이 정반대로 뒤집히므로 금지 (2026-07-03 리뷰 수정).
+RANK = {"T1": 1, "T2": 2, "T3": 3, "T4": 4}
+ranks = sorted(RANK.get(e["tier"], 4) for e in packet.get("evidence", []))
+
+outcome = packet["outcome"]
+ok = True
+reason = ""
+if outcome == "done":
+    # §2 정책 그대로: T1 필수 + T2/T3 중 하나 추가
+    ok = 1 in ranks and any(r in (2, 3) for r in ranks)
+    reason = "done requires T1 plus one of T2/T3"
+elif outcome == "partial":
+    ok = 1 in ranks
+    reason = "partial requires at least one T1"
+elif outcome == "failed":
+    ok = any(r <= 3 for r in ranks)
+    reason = "failed requires T1-T3 evidence"
+# question은 증거 없이 허용
+
+if not ok:
+    print(f"REJECT: {reason}. Got tiers={[e['tier'] for e in packet.get('evidence', [])]}")
     sys.exit(1)
 print(f"ACCEPT: {packet['summary']}")
 ```
