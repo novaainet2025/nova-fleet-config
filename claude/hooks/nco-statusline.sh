@@ -709,7 +709,7 @@ if [ -f "$_PUSAGE_FILE" ] && [ -s "$_PUSAGE_FILE" ]; then
   # 나머지 사용량 순 표시 (LIMIT 포함 최대 6개)
   while IFS='|' read -r _pu_id _pu_total _pu_ok _pu_fail; do
     [ -z "$_pu_id" ] && continue
-    [ "$_pu_count" -ge 6 ] && break
+    [ "$_pu_count" -ge 11 ] && break
     [ -n "${_pu_shown[$_pu_id]}" ] && continue
     [ -n "${_PU_DISABLED[$_pu_id]}" ] && continue
     _pu_label="${_PU_SHORT[$_pu_id]}"
@@ -737,7 +737,21 @@ if [ -f "$_PUSAGE_FILE" ] && [ -s "$_PUSAGE_FILE" ]; then
     [ "${_or_n:-0}" -gt 1 ] && _APIKEYS_SUFFIX="${_APIKEYS_SUFFIX}${GR}OR:${RST}${G}${_or_n}keys${RST} "
     [ "${_nv_n:-0}" -gt 1 ] && _APIKEYS_SUFFIX="${_APIKEYS_SUFFIX}${GR}NV:${RST}${G}${_nv_n}keys${RST} "
   fi
-  [ -n "$_PUSAGE_LINE" ] && echo -e "  ${_NCO_SUMMARY} ${GR}|${RST} ${_PUSAGE_LINE}${_APIKEYS_SUFFIX}"
+  if [ -n "$_PUSAGE_LINE" ]; then
+    # 6개 이하면 1줄, 초과면 2줄로 분리
+    if [ "$_pu_count" -le 6 ]; then
+      echo -e "  ${_NCO_SUMMARY} ${GR}|${RST} ${_PUSAGE_LINE}${_APIKEYS_SUFFIX}"
+    else
+      # 앞 6개 / 나머지 분리
+      _line1="" ; _line2="" ; _li=0
+      for _seg in $_PUSAGE_LINE; do
+        if [ "$_li" -lt 6 ]; then _line1="${_line1}${_seg} "
+        else _line2="${_line2}${_seg} "; fi
+        ((_li++))
+      done
+      echo -e "  ${_NCO_SUMMARY} ${GR}|${RST} ${_PUSAGE_LINE}${_APIKEYS_SUFFIX}"
+    fi
+  fi
 else
   echo -e "  ${_NCO_SUMMARY}"
 fi
