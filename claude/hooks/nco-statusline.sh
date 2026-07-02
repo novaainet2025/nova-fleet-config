@@ -50,7 +50,16 @@ if [ "$_lock_age" -gt 8 ]; then
     fi
 
     # Provider usage (tasks 테이블 — 오늘 KST 기준 태스크 수)
-    _NCO_DB="/Users/nova-ai/project/nco/db/nco.db"
+    # DB 경로: 환경변수 > 플랫폼별 기본 경로
+    _NCO_DB="${NCO_DB_PATH:-}"
+    if [ -z "$_NCO_DB" ] || [ ! -f "$_NCO_DB" ]; then
+      for _db_candidate in \
+        "$HOME/project/nco/db/nco.db" \
+        "$HOME/projects/nco/db/nco.db" \
+        "$HOME/nco/db/nco.db"; do
+        [ -f "$_db_candidate" ] && { _NCO_DB="$_db_candidate"; break; }
+      done
+    fi
     if [ -f "$_NCO_DB" ]; then
       sqlite3 "$_NCO_DB" "
         SELECT assigned_to,
