@@ -532,6 +532,27 @@ if [ "${#ORDER[@]}" -eq 0 ]; then
 fi
 
 # ── 에이전트 상태 표시 ─────────────────────────────────────────
+# 상태 파싱은 python3 (jq 미설치 머신 지원 — kangNote에 jq 없음)
+declare -A DSTAT=()
+while IFS=$'\t' read -r _id _rest; do
+  [ -n "$_id" ] && DSTAT[$_id]="$_rest"
+done < <(
+  DAEMONS_RAW="$DAEMONS" python3 - <<'PYEOF' 2>/dev/null
+import json, os
+raw = os.environ.get("DAEMONS_RAW","")
+try:
+    d = json.loads(raw)
+    for it in d.get("daemons", []):
+        pid = it.get("id")
+        if not pid:
+            continue
+        print("%s\t%s %s %s" % (pid, it.get("status",""),
+              str(it.get("enabled","")).lower(), str(it.get("available","")).lower()))
+except Exception:
+    pass
+PYEOF
+)
+
 AI_DISPLAY=""
 ONLINE=0
 for ai in "${ORDER[@]}"; do
@@ -549,8 +570,7 @@ for ai in "${ORDER[@]}"; do
   fi
   # NCO CLI 프로바이더는 stateless lazy spawn — 위임 시 subprocess spawn → 종료
   # offline = 휴면 상태(정상). enabled && available 이면 "위임 가능"으로 활성 카운트
-  INFO=$(echo "$DAEMONS" | jq -r ".daemons[]? | select(.id==\"${ai}\") | \"\(.status) \(.enabled) \(.available)\"" 2>/dev/null)
-  read -r STATUS ENABLED AVAILABLE <<< "$INFO"
+  read -r STATUS ENABLED AVAILABLE <<< "${DSTAT[$ai]:-}"
   case "$STATUS" in
     working|thinking) AI_DISPLAY="${AI_DISPLAY}${G}${S}${RST} "; ((ONLINE++)) ;;
     idle)             AI_DISPLAY="${AI_DISPLAY}${C}${S}${RST} "; ((ONLINE++)) ;;
