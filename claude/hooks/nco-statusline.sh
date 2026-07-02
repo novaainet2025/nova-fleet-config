@@ -1,5 +1,11 @@
 #!/bin/bash
 # NCO AI Status Line — 컬러 + 정확한 세션명 + OS별 백엔드 레이블
+# v2 — fast-path + background refresh (v2.1.109 timeout 대응)
+#
+# 아키텍처:
+#   - 모든 네트워크 호출은 캐시에서 읽는다 (< 50ms)
+#   - 백그라운드 워커가 캐시를 비동기 갱신한다 (스크립트와 독립)
+#   - 스크립트 자체는 항상 200ms 이내에 완료되어야 한다
 
 # ── ANSI 컬러 ($'...' — bash/zsh/Mac 모두 실제 ESC 문자 저장) ─
 R=$'\033[31m'   # 빨강
@@ -16,49 +22,132 @@ RST=$'\033[0m'
 
 INPUT=$(cat)
 
-# ── 백엔드 감지 ────────────────────────────────────────────────
-# 우선순위:
-#   1. NCO_STATUSLINE_BACKEND 명시 환경변수
-#   2. ANTHROPIC_BASE_URL이 localhost → 로컬 프록시 사용 중
-#      - Mac → MLX, WSL/Linux → OLL
-#   3. ANTHROPIC_BASE_URL 없음 → Claude API 직접 사용 → 빈 prefix
+# ── 캐시 디렉터리 ─────────────────────────────────────────────
+_CACHE_DIR="/tmp/nco-sl-cache-${USER:-$(id -un)}"
+mkdir -p "$_CACHE_DIR" 2>/dev/null
+
+# ── 백그라운드 네트워크 갱신 워커 (비동기, 스크립트와 무관) ────
+# 락 파일로 중복 실행 방지 (TTL 8초)
+_BG_LOCK="${_CACHE_DIR}/bg.lock"
+_now_ts=$(date +%s 2>/dev/null || echo 0)
+_lock_ts=0
+[ -f "$_BG_LOCK" ] && _lock_ts=$(cat "$_BG_LOCK" 2>/dev/null || echo 0)
+_lock_age=$(( _now_ts - _lock_ts ))
+
+if [ "$_lock_age" -gt 8 ]; then
+  printf '%s' "$_now_ts" > "$_BG_LOCK" 2>/dev/null
+  (
+    # NCO API/WS
+    _api=0; _ws=0
+    (echo > /dev/tcp/localhost/6200) 2>/dev/null && _api=1
+    [ "$_api" = "1" ] && (echo > /dev/tcp/localhost/6201) 2>/dev/null && _ws=1
+    printf '%s %s' "$_api" "$_ws" > "${_CACHE_DIR}/nco-conn" 2>/dev/null
+
+    # NCO daemons
+    if [ "$_api" = "1" ]; then
+      _d=$(curl -s -m 1 http://localhost:6200/api/daemons 2>/dev/null)
+      [ -n "$_d" ] && printf '%s' "$_d" > "${_CACHE_DIR}/daemons.json" 2>/dev/null
+    fi
+
+    # Provider usage (tasks 테이블 — 오늘 KST 기준 태스크 수)
+    _NCO_DB="/Users/nova-ai/project/nco/db/nco.db"
+    if [ -f "$_NCO_DB" ]; then
+      sqlite3 "$_NCO_DB" "
+        SELECT assigned_to,
+               COUNT(*) as total,
+               SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) as ok,
+               SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) as fail
+        FROM tasks
+        WHERE assigned_to IS NOT NULL AND assigned_to != ''
+          AND created_at >= datetime(strftime('%Y-%m-%d', 'now', '+9 hours') || ' 00:00:00', '-9 hours')
+        GROUP BY assigned_to
+        ORDER BY total DESC;
+      " 2>/dev/null > "${_CACHE_DIR}/provider-usage.txt" 2>/dev/null
+    fi
+
+    # 프로바이더 리밋 감지 (최근 실패 — 확실한 리밋 패턴만)
+    if [ -f "$_NCO_DB" ]; then
+      sqlite3 "$_NCO_DB" "
+        SELECT DISTINCT assigned_to
+        FROM tasks
+        WHERE status='failed'
+          AND (response LIKE '%hit your usage limit%'
+               OR response LIKE '%exceeded your monthly quota%'
+               OR response LIKE '%ActionRequiredError%usage limit%'
+               OR response LIKE '%set a Spend Limit%')
+          AND created_at > datetime('now', '-6 hours')
+        ORDER BY created_at DESC;
+      " 2>/dev/null > "${_CACHE_DIR}/provider-limits.txt" 2>/dev/null
+    fi
+
+    # API 키 개수 캐시 (멀티키 프로바이더)
+    _key_info=""
+    _or_keys=$(grep '^OPENROUTER_API_KEYS=' /Users/nova-ai/project/nco/.env 2>/dev/null | cut -d= -f2 | tr ',' '\n' | grep -c .)
+    _nv_keys=$(grep '^NVIDIA_API_KEY=' /Users/nova-ai/project/nco/.env 2>/dev/null | cut -d= -f2 | tr ',' '\n' | grep -c .)
+    echo "OR:${_or_keys:-0}|NV:${_nv_keys:-0}" > "${_CACHE_DIR}/api-keys.txt" 2>/dev/null
+
+    # nova-ax statusline (캐시만 — 빠른 경로에서 읽음)
+    _AX_BASE="${NCO_AX_URL:-}"
+    [ -z "$_AX_BASE" ] && [ -s "$HOME/.claude/.ax-url" ] && _AX_BASE="$(tr -d '[:space:]' < "$HOME/.claude/.ax-url" 2>/dev/null)"
+    [ -z "$_AX_BASE" ] && _AX_BASE="http://127.0.0.1:6300"
+    _ax_resp=$(curl -s -m 1 "${_AX_BASE}/api/statusline" 2>/dev/null)
+    if [ -n "$_ax_resp" ]; then
+      _ax_text=$(printf '%s' "$_ax_resp" | python3 -c "
+import sys,json
+try: print(json.load(sys.stdin).get('text','') or '')
+except: pass" 2>/dev/null)
+      [ -n "$_ax_text" ] && printf '%s' "$_ax_text" > "${_CACHE_DIR}/ax-text" 2>/dev/null
+    fi
+
+    # Higgsfield (결과를 캐시에 저장)
+    _hf_status=2
+    if command -v higgsfield &>/dev/null; then
+      bash "$HOME/projects/scripts/higgsfield-auth-check.sh" > /dev/null 2>&1 && _hf_status=0 || _hf_status=1
+    fi
+    printf '%s' "$_hf_status" > "${_CACHE_DIR}/hf-status" 2>/dev/null
+    _hf_cred=$(bash "$HOME/projects/scripts/higgsfield-credits.sh" 2>/dev/null)
+    [ -n "$_hf_cred" ] && printf '%s' "$_hf_cred" > "${_CACHE_DIR}/hf-cred" 2>/dev/null
+
+    # Ollama 모델 (proxy /health 경유)
+    _oll_url=$(curl -s -m 1 "http://localhost:4100/health" 2>/dev/null \
+      | python3 -c "import sys,json
+try: print(json.load(sys.stdin).get('ollama_base_url','') or '')
+except: pass" 2>/dev/null)
+    if [ -n "$_oll_url" ]; then
+      _oll_model=$(curl -s -m 2 "${_oll_url}/v1/models" 2>/dev/null | python3 -c "
+import sys,json,re
+try:
+  d=json.load(sys.stdin); m=d.get('data',[])
+  if m:
+    mid=m[0].get('id','')
+    mid=re.sub(r'(:[\w]+)-[\w-]+-[\w]+\$', r'\1', mid)
+    mid=re.sub(r':[^:]{8,}\$', lambda x: x.group(0)[:6], mid)
+    print(mid)
+except: pass" 2>/dev/null)
+      [ -n "$_oll_model" ] && printf '%s' "$_oll_model" > "${_CACHE_DIR}/oll-model" 2>/dev/null
+      # Ollama display URL
+      _oll_disp=$(printf '%s' "$_oll_url" | python3 -c "import sys,re; u=sys.stdin.read().strip(); m=re.search(r'(?:https?://)?([^/]+)',u); print(m.group(1) if m else u)" 2>/dev/null)
+      [ -n "$_oll_disp" ] && printf '%s' "$_oll_disp" > "${_CACHE_DIR}/oll-url" 2>/dev/null
+    fi
+
+    # 락 해제
+    rm -f "$_BG_LOCK" 2>/dev/null
+  ) </dev/null >/dev/null 2>&1 &
+  disown 2>/dev/null || true
+fi
+
+# ── 백엔드 감지 (순수 env 기반 — 네트워크 호출 없음) ──────────
 _detect_backend() {
   [ -n "$NCO_STATUSLINE_BACKEND" ] && { echo "$NCO_STATUSLINE_BACKEND"; return; }
   [ -n "$STATUSLINE_INFERENCE_BACKEND" ] && { echo "$STATUSLINE_INFERENCE_BACKEND"; return; }
-
-  # 로컬 프록시 경유 여부 확인
   local base_url="${ANTHROPIC_BASE_URL:-}"
   if echo "$base_url" | grep -qE "localhost|127\.0\.0\.1"; then
-    # 로컬 프록시 사용 중 → OS별 레이블
     if [ "$(uname)" = "Darwin" ]; then echo "MLX"
     else echo "OLL"
     fi
     return
   fi
-
-  # 프록시 없음 = Claude API 직접 → 레이블 없음
   echo ""
-}
-
-_detect_ollama_model() {
-  # 프록시 /health에서 Ollama URL 조회 → 실제 로드된 모델명 반환
-  local ollama_url
-  ollama_url=$(curl -s --max-time 1 "http://localhost:4100/health" 2>/dev/null \
-    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('ollama_base_url',''))" 2>/dev/null)
-  [ -z "$ollama_url" ] && return
-  curl -s --max-time 2 "${ollama_url}/v1/models" 2>/dev/null | python3 -c "
-import sys,json,re
-try:
-  d=json.load(sys.stdin)
-  m=d.get('data',[])
-  if m:
-    mid=m[0].get('id','')
-    # gemma4:26b-a4b-it-q4_K_M → gemma4:26b
-    mid=re.sub(r'(:[\w]+)-[\w-]+-[\w]+\$', r'\1', mid)
-    mid=re.sub(r':[^:]{8,}\$', lambda x: x.group(0)[:6], mid)
-    print(mid)
-except: pass
-" 2>/dev/null
 }
 _BACKEND=$(_detect_backend)
 # "Ollama" (launch.sh 기본값) → 내부 표준 "OLL"로 정규화
@@ -336,9 +425,9 @@ while IFS='=' read -r key val; do
   esac
 done <<< "$_PARSED"
 
-# ── OLL/MLX 백엔드: 실제 Ollama 모델명 + 로컬 표시 ─────────────
+# ── OLL/MLX 백엔드: 실제 Ollama 모델명 (캐시에서 읽기) ─────────
 if [ "$_BACKEND" = "OLL" ] || [ "$_BACKEND" = "MLX" ]; then
-  _OLLAMA_MODEL=$(_detect_ollama_model)
+  _OLLAMA_MODEL=$(cat "${_CACHE_DIR}/oll-model" 2>/dev/null)
   [ -n "$_OLLAMA_MODEL" ] && BRACKET="[${_BACKEND}:${_OLLAMA_MODEL}]"
   # 로컬 추론은 Anthropic rate limit 없음 — 하드코딩 폴백값 덮어쓰기
   RATE_DAY=0
@@ -356,21 +445,23 @@ declare -A SHORT=(
   ["ollama"]="OLL" ["higgsfield"]="Hig"
 )
 
-# ── NCO 연결 상태 ─────────────────────────────────────────────
+# ── NCO 연결 상태 (캐시에서 읽기) ────────────────────────────
 API_OK=0; WS_OK=0
-(echo > /dev/tcp/localhost/6200) 2>/dev/null && API_OK=1
-[ "$API_OK" = "1" ] && (echo > /dev/tcp/localhost/6201) 2>/dev/null && WS_OK=1
+if [ -f "${_CACHE_DIR}/nco-conn" ]; then
+  read -r API_OK WS_OK < "${_CACHE_DIR}/nco-conn" 2>/dev/null || true
+fi
+API_OK=${API_OK:-0}; WS_OK=${WS_OK:-0}
 
 DAEMONS=""
-[ "$API_OK" = "1" ] && DAEMONS=$(curl -s -m 0.5 http://localhost:6200/api/daemons 2>/dev/null)
+[ -f "${_CACHE_DIR}/daemons.json" ] && DAEMONS=$(cat "${_CACHE_DIR}/daemons.json" 2>/dev/null)
 
 # ── ORDER 동적 구성 (NCO 실시간 싱크) ─────────────────────────
 # 우선순위:
 #   1. 라이브 /api/daemons — enabled=true 만, evicted_providers 제외
 #   2. health.json — nco-health-monitor.sh 캐시 (백엔드 다운 시)
 #   3. 하드코딩 폴백
-_CAPS_FILE="{{HOME}}/.claude/nco-perf/capabilities.json"
-_HEALTH_FILE="{{HOME}}/.claude/nco-perf/health.json"
+_CAPS_FILE="/Users/nova-ai/.claude/nco-perf/capabilities.json"
+_HEALTH_FILE="/Users/nova-ai/.claude/nco-perf/health.json"
 ORDER=()
 while IFS= read -r _line; do
   [ -n "$_line" ] && ORDER+=("$_line")
@@ -581,6 +672,77 @@ echo -e "  ${API_C} ${WS_C} ${GR}[${RST} ${AI_DISPLAY}${GR}]${RST}${ONLINE}/${TO
 # 줄3: NCO 사용률 바
 echo -e "  ${GR}NCO${RST} $(nco_bar $_NCO_PCT) $(nco_pct_color $_NCO_PCT) ${GR}(NCO:${RST}${_NCO_CALLS}${GR}↑ 직접:${RST}${_DIRECT_EDITS}${GR}↓)${RST}"
 
+# 줄4: 프로바이더별 오늘 사용량 — 바 형태 (캐시에서 읽기)
+_PUSAGE_FILE="${_CACHE_DIR}/provider-usage.txt"
+if [ -f "$_PUSAGE_FILE" ] && [ -s "$_PUSAGE_FILE" ]; then
+  _PUSAGE_LINE=""
+  declare -A _PU_SHORT=(
+    ["claude-code"]="Cla" ["opencode"]="Opn" ["agy"]="Agy"
+    ["codex"]="Cdx" ["cursor-agent"]="Cur" ["copilot"]="Cop"
+    ["openrouter"]="ORT" ["nvidia"]="NIM" ["ollama"]="OLL"
+    ["hermes"]="Hrm" ["mlx"]="MLX" ["higgsfield"]="Hig" ["openclaw"]="Ocl"
+  )
+  # 표시 제외: 비활성 + 로컬 무제한 프로바이더
+  declare -A _PU_DISABLED=(
+    ["gemini"]=1 ["aider"]=1 ["invalid-provider"]=1
+    ["ollama"]=1 ["mlx"]=1
+  )
+  # LIMIT 상태 프로바이더 로드
+  _PLIMIT_FILE="${_CACHE_DIR}/provider-limits.txt"
+  declare -A _PU_LIMITED=()
+  if [ -f "$_PLIMIT_FILE" ] && [ -s "$_PLIMIT_FILE" ]; then
+    while IFS= read -r _lim_id; do
+      [ -n "$_lim_id" ] && _PU_LIMITED["$_lim_id"]=1
+    done < "$_PLIMIT_FILE"
+  fi
+  # LIMIT 프로바이더 먼저 표시 (사용량 목록에 없어도)
+  _pu_count=0
+  declare -A _pu_shown=()
+  if [ -f "$_PLIMIT_FILE" ] && [ -s "$_PLIMIT_FILE" ]; then
+    while IFS= read -r _lim_id; do
+      [ -z "$_lim_id" ] && continue
+      [ -n "${_PU_DISABLED[$_lim_id]}" ] && continue
+      _pu_label="${_PU_SHORT[$_lim_id]}"
+      [ -z "$_pu_label" ] && _pu_label=$(echo "$_lim_id" | cut -c1-3 | sed 's/./\U&/')
+      _PUSAGE_LINE="${_PUSAGE_LINE}${GR}${_pu_label}${RST} ${R}LIMIT${RST} "
+      _pu_shown["$_lim_id"]=1
+      ((_pu_count++))
+    done < "$_PLIMIT_FILE"
+  fi
+  # 나머지 사용량 순 표시 (LIMIT 포함 최대 6개)
+  while IFS='|' read -r _pu_id _pu_total _pu_ok _pu_fail; do
+    [ -z "$_pu_id" ] && continue
+    [ "$_pu_count" -ge 6 ] && break
+    [ -n "${_pu_shown[$_pu_id]}" ] && continue
+    [ -n "${_PU_DISABLED[$_pu_id]}" ] && continue
+    _pu_label="${_PU_SHORT[$_pu_id]}"
+    [ -z "$_pu_label" ] && _pu_label=$(echo "$_pu_id" | cut -c1-3 | sed 's/./\U&/')
+    # 성공률 계산
+    if [ "$_pu_total" -gt 0 ]; then
+      _sr=$(( _pu_ok * 100 / _pu_total ))
+    else
+      _sr=0
+    fi
+    # 성공률 색상
+    if   [ "$_sr" -ge 90 ]; then _mc="$G"
+    elif [ "$_sr" -ge 70 ]; then _mc="$Y"
+    else                          _mc="$R"
+    fi
+    _PUSAGE_LINE="${_PUSAGE_LINE}${GR}${_pu_label}${RST}:${W}${_pu_total}${RST}${_mc}(${_sr}%)${RST} "
+    ((_pu_count++))
+  done < "$_PUSAGE_FILE"
+  # API 키 개수 표시 (멀티키 프로바이더)
+  _APIKEYS_FILE="${_CACHE_DIR}/api-keys.txt"
+  _APIKEYS_SUFFIX=""
+  if [ -f "$_APIKEYS_FILE" ]; then
+    IFS='|' read -r _ak_or _ak_nv < "$_APIKEYS_FILE"
+    _or_n="${_ak_or#OR:}"; _nv_n="${_ak_nv#NV:}"
+    [ "${_or_n:-0}" -gt 1 ] && _APIKEYS_SUFFIX="${_APIKEYS_SUFFIX}${GR}OR:${RST}${G}${_or_n}keys${RST} "
+    [ "${_nv_n:-0}" -gt 1 ] && _APIKEYS_SUFFIX="${_APIKEYS_SUFFIX}${GR}NV:${RST}${G}${_nv_n}keys${RST} "
+  fi
+  [ -n "$_PUSAGE_LINE" ] && echo -e "  ${GR}오늘${RST} ${_PUSAGE_LINE}${GR}|${RST} ${_APIKEYS_SUFFIX}"
+fi
+
 # 줄5: 사용량 바 (OLL/MLX: 로컬 표시 / Claude API: rate limit 바)
 if [ "$_BACKEND" = "OLL" ] || [ "$_BACKEND" = "MLX" ]; then
   echo -e "  ${G}local · free · ∞${RST} ${GR}|${RST} ${GR}Ctx:${RST}$(pct_color $CTX_PCT) ${GR}|${RST} ${G}\$0.00${RST}"
@@ -590,19 +752,9 @@ fi
 
 # 줄6: 리셋 시각 (OLL/MLX: Ollama 연결 정보 / Claude API: reset 시각)
 if [ "$_BACKEND" = "OLL" ] || [ "$_BACKEND" = "MLX" ]; then
-  # Ollama URL 동적 감지 (WSL: 172.28.x.x / Mac: localhost)
-  _OLLAMA_DISPLAY_URL=$(curl -s --max-time 1 "http://localhost:4100/health" 2>/dev/null \
-    | python3 -c "
-import sys,json,re
-try:
-  d=json.load(sys.stdin)
-  u=d.get('ollama_base_url','')
-  # 포트만 추출해서 표시
-  m=re.search(r'(?:https?://)?([^/]+)', u)
-  print(m.group(1) if m else u)
-except: print('')
-" 2>/dev/null)
-  # GPU 정보 감지 (Mac: Apple Silicon / WSL: NVIDIA)
+  # Ollama URL (캐시에서 읽기)
+  _OLLAMA_DISPLAY_URL=$(cat "${_CACHE_DIR}/oll-url" 2>/dev/null)
+  # GPU 정보 감지 (Mac: Apple Silicon / WSL: NVIDIA — local, no network)
   if [ "$(uname)" = "Darwin" ]; then
     _GPU_LABEL="Apple Silicon"
   else
@@ -618,10 +770,9 @@ else
   echo -e "  ${GR}↻ 1일${RST} ${DIM}$(fmt_reset $DAY_RESET)${RST} ${GR}·${RST} ${GR}주별${RST} ${DIM}$(fmt_reset $WEEK_RESET)${RST}"
 fi
 
-# Higgsfield 상태 (설치 여부 + auth + 잔여 크레딧/당일 사용량)
-_HF_STATUS=$(bash "$HOME/projects/scripts/higgsfield-auth-check.sh" 2>/dev/null; echo $?)
-# 잔여 크레딧 + 당일 사용량 (캐시 기반·비블로킹) — "credits|plan|today_spend"
-_HF_CRED=$(bash "$HOME/projects/scripts/higgsfield-credits.sh" 2>/dev/null)
+# Higgsfield 상태 (캐시에서 읽기)
+_HF_STATUS=$(cat "${_CACHE_DIR}/hf-status" 2>/dev/null); _HF_STATUS=${_HF_STATUS:-2}
+_HF_CRED=$(cat "${_CACHE_DIR}/hf-cred" 2>/dev/null)
 IFS='|' read -r _HF_C _HF_PLAN _HF_SPEND <<< "$_HF_CRED"
 if [ -n "$_HF_C" ]; then
   _HF_EXTRA=" · ${C}${_HF_C} cr${RST}${GR} · 오늘 -${_HF_SPEND}"
@@ -635,30 +786,8 @@ case "$_HF_STATUS" in
   *)          echo -e "  ${GR}Hig${RST} ${GR}unknown${RST}" ;;
 esac
 
-# ── 줄6~8: nova-ax (AI-only company) 상태 — 서버 다운 시 무음 ──
-# 세션별 사용량: 이 Claude 세션 시작시각(ISO)을 한 번만 마커에 기록 → since로 전달.
-# 누적이 아닌 "이 세션에서의 사용량"만 표시(서버가 since 윈도우로 스코프). session_id는 stdin INPUT 기준.
-_AX_SID=$(printf '%s' "$INPUT" | python3 -c "
-import sys, json
-try: print(json.load(sys.stdin).get('session_id','') or '')
-except: pass" 2>/dev/null)
-_AX_Q=""
-if [ -n "$_AX_SID" ]; then
-  _axm="/tmp/nco-names/.axstart-${_AX_SID}"
-  [ -f "$_axm" ] || date -u +%Y-%m-%dT%H:%M:%S.000Z > "$_axm" 2>/dev/null
-  _ax_since=$(cat "$_axm" 2>/dev/null)
-  [ -n "$_ax_since" ] && _AX_Q="?since=${_ax_since}&session=${MY_NAME}"
-fi
-# nova-ax 베이스 URL: NCO_AX_URL env > ~/.claude/.ax-url 파일 > 로컬 기본. (노트북 등 무 nova-ax 노드는 중앙노드 tailnet URL로 원격참조)
-_AX_BASE="${NCO_AX_URL:-}"
-[ -z "$_AX_BASE" ] && [ -s "$HOME/.claude/.ax-url" ] && _AX_BASE="$(tr -d '[:space:]' < "$HOME/.claude/.ax-url" 2>/dev/null)"
-[ -z "$_AX_BASE" ] && _AX_BASE="http://127.0.0.1:6300"
-_AX_TEXT=$(curl -s --max-time 0.6 "${_AX_BASE}/api/statusline${_AX_Q}" 2>/dev/null \
-  | python3 -c "
-import sys, json
-try: print(json.load(sys.stdin).get('text','') or '')
-except: pass
-" 2>/dev/null)
+# ── nova-ax 상태 (캐시에서 읽기 — 백그라운드 워커가 갱신) ──────
+_AX_TEXT=$(cat "${_CACHE_DIR}/ax-text" 2>/dev/null)
 if [ -n "$_AX_TEXT" ]; then
   echo -e "$_AX_TEXT"
 fi

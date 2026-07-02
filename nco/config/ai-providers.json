@@ -1,0 +1,734 @@
+{
+  "version": 8,
+  "updated": "2026-07-01",
+  "providers": [
+    {
+      "id": "remote-mlx",
+      "name": "Mac MLX (Tailscale Remote)",
+      "enabled": false,
+      "type": "api",
+      "role": "Local LLM",
+      "score": 80,
+      "model": "gemma-4-26b-a4b-it-4bit",
+      "baseUrl": "http://100.88.88.69:8000/v1",
+      "concurrency": 1,
+      "rateLimitRpm": 10,
+      "cost": "free",
+      "capabilities": [
+        "code",
+        "analysis",
+        "reasoning",
+        "chat"
+      ],
+      "platforms": [
+        "linux",
+        "wsl"
+      ],
+      "note": "Mac MLX via Tailscale (100.88.88.69:8000). auto-managed by mlx-watchdog.sh — enabled=true when heartbeat active",
+      "healthCheck": {
+        "url": "http://100.88.88.69:8000/v1/models",
+        "timeout": 5000
+      }
+    },
+    {
+      "id": "claude-code",
+      "name": "Claude Code",
+      "enabled": true,
+      "type": "cli",
+      "role": "Commander",
+      "score": 95,
+      "model": "claude-opus-4-6",
+      "command": "claude",
+      "args": [
+        "--dangerously-skip-permissions"
+      ],
+      "env": {},
+      "concurrency": 4,
+      "rateLimitRpm": 20,
+      "cost": "paid",
+      "capabilities": [
+        "code",
+        "review",
+        "architecture",
+        "security",
+        "decision",
+        "delegation"
+      ],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": true,
+        "canSupervise": true,
+        "canFinalApprove": true
+      },
+      "persona": {
+        "systemPrompt": "You are the Supreme Commander of the NCO AI team. You coordinate all agents, make architectural decisions, and have final approval authority.",
+        "tone": "authoritative",
+        "style": "strategic"
+      },
+      "healthCheck": {
+        "command": "claude",
+        "args": [
+          "--version"
+        ],
+        "timeout": 5000
+      }
+    },
+    {
+      "id": "opencode",
+      "name": "OpenCode",
+      "enabled": true,
+      "type": "cli",
+      "role": "Architect",
+      "score": 90,
+      "model": "multi-llm",
+      "command": "opencode",
+      "args": [
+        "run"
+      ],
+      "env": {},
+      "concurrency": 4,
+      "rateLimitRpm": 20,
+      "cost": "paid",
+      "capabilities": [
+        "code",
+        "architecture",
+        "multi-model",
+        "design",
+        "analysis"
+      ],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": true,
+        "canSupervise": true,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are the Architect of the NCO AI team. You design system architecture and have access to 75+ LLMs.",
+        "tone": "adaptive",
+        "style": "professional"
+      },
+      "healthCheck": {
+        "command": "opencode",
+        "args": [
+          "--version"
+        ],
+        "timeout": 5000
+      }
+    },
+    {
+      "id": "gemini",
+      "name": "Gemini (API 직결)",
+      "enabled": false,
+      "type": "api",
+      "role": "Designer",
+      "score": 85,
+      "model": "gemini-2.5-flash",
+      "command": null,
+      "args": [],
+      "endpoint": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "apiKeyRef": "GEMINI_API_KEY",
+      "env": {},
+      "concurrency": 2,
+      "rateLimitRpm": 10,
+      "cost": "free",
+      "capabilities": [
+        "design",
+        "ui-ux",
+        "multimodal",
+        "analysis",
+        "performance"
+      ],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": false,
+        "canSupervise": true,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are the Designer/Supervisor of the NCO AI team. You analyze UI/UX, perform multimodal analysis, and review design decisions.",
+        "tone": "analytical",
+        "style": "detailed"
+      },
+      "healthCheck": {
+        "type": "api",
+        "url": "https://generativelanguage.googleapis.com/v1beta/openai/models",
+        "timeout": 5000
+      },
+      "note": "2026-07-02: agy CLI(OAuth 만료)에서 Gemini OpenAI-호환 API 직결로 전환. .env GEMINI_API_KEY 검증됨 (generateContent GEMINI-OK)."
+    },
+    {
+      "id": "codex",
+      "name": "Codex CLI",
+      "enabled": true,
+      "type": "cli",
+      "role": "Engineer",
+      "score": 83,
+      "model": "codex",
+      "command": "codex",
+      "args": [],
+      "env": {},
+      "concurrency": 4,
+      "rateLimitRpm": 20,
+      "cost": "paid",
+      "capabilities": [
+        "code",
+        "algorithms",
+        "generation",
+        "testing"
+      ],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": false,
+        "canSupervise": false,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are a Code Engineer of the NCO AI team. You write code, implement algorithms, and create tests.",
+        "tone": "efficient",
+        "style": "code-focused"
+      },
+      "healthCheck": {
+        "command": "codex",
+        "args": [
+          "--version"
+        ],
+        "timeout": 5000
+      }
+    },
+    {
+      "id": "aider",
+      "name": "Aider",
+      "enabled": false,
+      "type": "cli",
+      "role": "Engineer",
+      "score": 82,
+      "model": "openrouter/qwen/qwen3-next-80b-a3b-instruct:free",
+      "command": "aider",
+      "args": [
+        "--yes",
+        "--no-auto-commits",
+        "--model",
+        "openrouter/qwen/qwen3-next-80b-a3b-instruct:free"
+      ],
+      "env": {},
+      "concurrency": 4,
+      "rateLimitRpm": 20,
+      "cost": "free",
+      "capabilities": [
+        "code",
+        "refactoring",
+        "git",
+        "editing",
+        "large-changes"
+      ],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": false,
+        "canSupervise": false,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are a Git/Code Specialist of the NCO AI team. You handle large refactoring, atomic commits, and code editing.",
+        "tone": "practical",
+        "style": "git-focused"
+      },
+      "apiConfig": {
+        "primary": {
+          "provider": "openrouter",
+          "baseUrl": "https://openrouter.ai/api/v1",
+          "apiKeyRef": "OPENROUTER_API_KEYS",
+          "model": "openrouter/qwen/qwen3-next-80b-a3b-instruct:free"
+        },
+        "fallback": {
+          "provider": "ollama",
+          "baseUrl": "http://127.0.0.1:11434/v1",
+          "apiKeyRef": null,
+          "model": "gemma4:26b-a4b-it-q4_K_M"
+        }
+      },
+      "healthCheck": {
+        "command": "aider",
+        "args": [
+          "--version"
+        ],
+        "timeout": 5000
+      },
+      "note": "API key resolution: NCO injects OPENROUTER_API_KEY (singular) at startup from first OPENROUTER_API_KEYS env var (plural, comma-separated). See agent-manager.ts injectDerivedKeys(). | 2026-07-02: llama-4-maverick:free 유료전환으로 qwen3-next-80b:free로 교체, aider 활성화."
+    },
+    {
+      "id": "cursor-agent",
+      "name": "Cursor Agent",
+      "enabled": true,
+      "type": "cli",
+      "role": "Reviewer",
+      "score": 78,
+      "model": "cursor",
+      "command": "cursor-agent",
+      "args": [],
+      "env": {},
+      "concurrency": 4,
+      "rateLimitRpm": 20,
+      "cost": "paid",
+      "capabilities": [
+        "review",
+        "analysis",
+        "ide-integration",
+        "bug-detection"
+      ],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": false,
+        "canSupervise": false,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are the Code Reviewer of the NCO AI team. You analyze code quality, detect bugs, and provide deep insights.",
+        "tone": "insightful",
+        "style": "comprehensive"
+      },
+      "note": "WSL binary at ~/.local/bin/cursor-agent",
+      "healthCheck": {
+        "command": "cursor-agent",
+        "args": [
+          "--version"
+        ],
+        "timeout": 5000
+      }
+    },
+    {
+      "id": "copilot",
+      "name": "GitHub Copilot",
+      "enabled": true,
+      "type": "cli",
+      "role": "Researcher",
+      "score": 75,
+      "model": "claude-haiku-4.5",
+      "command": "copilot",
+      "args": [
+        "--prompt"
+      ],
+      "env": {},
+      "concurrency": 4,
+      "rateLimitRpm": 20,
+      "cost": "paid",
+      "capabilities": [
+        "completion",
+        "research",
+        "suggestion",
+        "documentation"
+      ],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": false,
+        "canSupervise": false,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are the Researcher of the NCO AI team. You gather information, suggest completions, and assist with documentation.",
+        "tone": "helpful",
+        "style": "collaborative"
+      },
+      "note": "GitHub Copilot CLI v1.0.22. Uses claude-haiku-4.5 via Copilot API.",
+      "healthCheck": {
+        "command": "copilot",
+        "args": [
+          "--version"
+        ],
+        "timeout": 5000
+      }
+    },
+    {
+      "id": "openrouter",
+      "name": "OpenRouter",
+      "enabled": true,
+      "type": "api",
+      "role": "Generalist",
+      "score": 75,
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "command": null,
+      "args": [],
+      "endpoint": "https://openrouter.ai/api/v1",
+      "apiKeyRef": "OPENROUTER_API_KEYS",
+      "keyRotation": {
+        "enabled": true,
+        "envVar": "OPENROUTER_API_KEYS",
+        "delimiter": ",",
+        "maxKeys": 20,
+        "cooldownMs": 60000
+      },
+      "freeModels": [
+        "nvidia/nemotron-3-super-120b-a12b:free",
+        "openai/gpt-oss-120b:free",
+        "google/gemma-3-27b-it:free",
+        "google/gemma-4-31b-it:free",
+        "nousresearch/hermes-3-llama-3.1-405b:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+        "qwen/qwen3-coder:free"
+      ],
+      "env": {},
+      "concurrency": 2,
+      "rateLimitRpm": 10,
+      "cost": "free",
+      "capabilities": [
+        "code",
+        "analysis",
+        "general",
+        "reasoning",
+        "research"
+      ],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": false,
+        "canSupervise": false,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are a Generalist of the NCO AI team. You handle diverse tasks using free-tier models via OpenRouter. You are cost-efficient and versatile.",
+        "tone": "versatile",
+        "style": "efficient"
+      },
+      "note": "Free tier only. Uses OpenAI-compatible API via openrouter.ai",
+      "healthCheck": {
+        "type": "api",
+        "url": "https://openrouter.ai/api/v1/models",
+        "timeout": 5000
+      }
+    },
+    {
+      "id": "ollama",
+      "name": "Ollama",
+      "enabled": true,
+      "type": "api",
+      "role": "Engineer",
+      "score": 80,
+      "model": "gemma4:26b",
+      "command": null,
+      "args": [],
+      "endpoint": "http://localhost:11434/v1",
+      "apiKeyRef": null,
+      "env": {},
+      "concurrency": 2,
+      "rateLimitRpm": 20,
+      "cost": "free",
+      "capabilities": [
+        "code",
+        "analysis",
+        "local-inference",
+        "validation",
+        "testing",
+        "verification",
+        "reasoning"
+      ],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": false,
+        "canSupervise": false,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are a local AI engineer on the NCO team. You run on Ollama (Windows RTX 4090) and handle code generation, analysis, validation, and testing tasks efficiently.",
+        "tone": "efficient",
+        "style": "practical"
+      },
+      "modelSpec": {
+        "name": "Gemma 4 26B (Ollama Local)",
+        "developer": "Google DeepMind",
+        "parameters": "26B MoE",
+        "gpu": "Apple Silicon",
+        "maxModelLen": 32768
+      },
+      "note": "Local Ollama (localhost:11434). qwen3:32b model.",
+      "healthCheck": {
+        "type": "api",
+        "url": "http://localhost:11434/api/tags",
+        "timeout": 5000
+      },
+      "updated": "2026-07-01"
+    },
+    {
+      "id": "mlx",
+      "name": "MLX Local (Qwen3-Coder 30B-A3B)",
+      "enabled": true,
+      "type": "api",
+      "role": "Coder",
+      "score": 88,
+      "model": "/Users/nova-ai/project/LM-models/mlx/Qwen3-Coder-30B-A3B-Instruct-4bit",
+      "command": null,
+      "args": [],
+      "endpoint": "http://localhost:8000/v1",
+      "apiKeyRef": null,
+      "env": {},
+      "concurrency": 2,
+      "rateLimitRpm": 20,
+      "cost": "free",
+      "capabilities": [
+        "code",
+        "code-generation",
+        "code-review",
+        "analysis",
+        "local-inference",
+        "validation",
+        "reasoning"
+      ],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": false,
+        "canSupervise": false,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are a local AI coding specialist on the NCO team. You run Qwen3-Coder-30B-A3B on Apple Silicon via MLX. You excel at code generation, refactoring, bug fixing, and code review.",
+        "tone": "efficient",
+        "style": "practical"
+      },
+      "modelSpec": {
+        "name": "Qwen3-Coder-30B-A3B-Instruct-4bit",
+        "developer": "Alibaba Qwen",
+        "parameters": "30B MoE (3B active)",
+        "gpu": "Apple Silicon (MLX)",
+        "maxModelLen": 32768
+      },
+      "note": "MLX Server on Apple Silicon (port 8000). Qwen3-Coder — best coding MoE model, ~130 tok/s on M-series. Updated 2026-07-02.",
+      "healthCheck": {
+        "type": "api",
+        "url": "http://localhost:8000/v1/models",
+        "timeout": 5000
+      },
+      "updated": "2026-07-02"
+    },
+    {
+      "id": "agy",
+      "name": "Anti-Gravity (AGY)",
+      "enabled": false,
+      "type": "cli",
+      "role": "Designer",
+      "score": 85,
+      "model": "gemini-3-pro",
+      "command": "agy",
+      "args": [],
+      "env": {},
+      "concurrency": 4,
+      "rateLimitRpm": 20,
+      "cost": "paid",
+      "capabilities": [
+        "design",
+        "ui-ux",
+        "patterns",
+        "analysis",
+        "visual"
+      ],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": false,
+        "canSupervise": false,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are the Designer of the NCO AI team. You handle UI/UX design, visual patterns, and design analysis.",
+        "tone": "creative",
+        "style": "visual"
+      },
+      "healthCheck": {
+        "command": "agy",
+        "args": [
+          "--version"
+        ],
+        "timeout": 5000
+      },
+      "note": "2026-07-02 비활성: agy OAuth 자격증명 만료(API key not valid). 재활성화하려면 `agy` 대화형 재로그인 필요."
+    },
+    {
+      "id": "hermes",
+      "name": "Hermes Agent (NousResearch)",
+      "enabled": true,
+      "type": "api",
+      "role": "ToolUser",
+      "score": 86,
+      "model": "openai/gpt-4o-mini",
+      "command": null,
+      "args": [],
+      "endpoint": "https://openrouter.ai/api/v1",
+      "apiKeyRef": "OPENROUTER_API_KEYS",
+      "keyRotation": {
+        "enabled": true,
+        "envVar": "OPENROUTER_API_KEYS",
+        "delimiter": ",",
+        "maxKeys": 20,
+        "cooldownMs": 60000
+      },
+      "env": {},
+      "concurrency": 4,
+      "rateLimitRpm": 20,
+      "cost": "free",
+      "capabilities": [
+        "tool-use",
+        "function-calling",
+        "reasoning",
+        "code",
+        "analysis"
+      ],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": false,
+        "canSupervise": false,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are the Tool-Use Specialist of the NCO AI team. You excel at function calling, tool orchestration, and structured reasoning.",
+        "tone": "precise",
+        "style": "structured"
+      },
+      "healthCheck": {
+        "url": "https://openrouter.ai/api/v1/models",
+        "timeout": 5000
+      }
+    },
+    {
+      "id": "openclaw",
+      "name": "OpenClaw",
+      "enabled": false,
+      "type": "cli",
+      "role": "BrowserAgent",
+      "score": 80,
+      "model": "openrouter/openai/gpt-4o-mini",
+      "command": "openclaw",
+      "args": [],
+      "env": {},
+      "concurrency": 4,
+      "rateLimitRpm": 20,
+      "cost": "free",
+      "capabilities": [
+        "browser",
+        "web-scraping",
+        "navigation",
+        "automation",
+        "research"
+      ],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": false,
+        "canSupervise": false,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are the Browser Agent of the NCO AI team. You automate web browsing, scraping, and navigation tasks.",
+        "tone": "methodical",
+        "style": "systematic"
+      },
+      "healthCheck": {
+        "command": "openclaw",
+        "args": [
+          "--version"
+        ],
+        "timeout": 5000
+      }
+    },
+    {
+      "id": "higgsfield",
+      "name": "Higgsfield AI",
+      "enabled": true,
+      "type": "cli",
+      "role": "Media",
+      "score": 70,
+      "model": "higgsfield",
+      "command": "higgsfield",
+      "args": [],
+      "env": {},
+      "concurrency": 2,
+      "rateLimitRpm": 10,
+      "cost": "paid",
+      "capabilities": [
+        "image-generation",
+        "video-generation",
+        "media",
+        "visual-ai"
+      ],
+      "permissions": {
+        "canInitiateCollaboration": false,
+        "canDelegateToOthers": false,
+        "canSupervise": false,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are the Media Specialist of the NCO AI team. You generate images and videos using Higgsfield AI (FLUX.2, Veo 3.1, Kling).",
+        "tone": "creative",
+        "style": "visual"
+      },
+      "healthCheck": {
+        "command": "higgsfield",
+        "args": [
+          "--version"
+        ],
+        "timeout": 5000
+      }
+    },
+    {
+      "id": "nvidia",
+      "name": "NVIDIA NIM API",
+      "enabled": true,
+      "type": "api",
+      "role": "Reasoner",
+      "score": 88,
+      "model": "nvidia/llama-3.3-nemotron-super-49b-v1",
+      "command": null,
+      "args": [],
+      "endpoint": "https://integrate.api.nvidia.com/v1",
+      "apiKeyRef": "NVIDIA_API_KEY",
+      "keyRotation": {
+        "enabled": true,
+        "envVar": "NVIDIA_API_KEY",
+        "delimiter": ",",
+        "maxKeys": 20,
+        "cooldownMs": 60000
+      },
+      "freeModels": [
+        "nvidia/llama-3.3-nemotron-super-49b-v1",
+        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+        "nvidia/llama-3.1-nemotron-ultra-253b-v1",
+        "deepseek-ai/deepseek-v4-flash",
+        "deepseek-ai/deepseek-v4-pro",
+        "qwen/qwen3-next-80b-a3b-thinking",
+        "qwen/qwen3-coder-480b-a35b-instruct",
+        "qwen/qwen3.5-397b-a17b",
+        "meta/llama-3.3-70b-instruct",
+        "meta/llama-4-maverick-17b-128e-instruct",
+        "mistralai/mistral-large-3-675b-instruct-2512",
+        "mistralai/mistral-nemotron",
+        "nvidia/nemotron-3-super-120b-a12b",
+        "nvidia/nemotron-4-340b-instruct",
+        "moonshotai/kimi-k2.6",
+        "minimaxai/minimax-m2.7"
+      ],
+      "env": {},
+      "concurrency": 4,
+      "rateLimitRpm": 10,
+      "cost": "free",
+      "capabilities": [
+        "reasoning",
+        "analysis",
+        "debugging",
+        "decision",
+        "logic",
+        "code",
+        "architecture-review"
+      ],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": false,
+        "canSupervise": false,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are the Reasoning Specialist of the NCO AI team. You excel at complex multi-step logical analysis, mathematical reasoning, algorithm evaluation, and decision-tree validation. Always use <thinking> blocks for chain-of-thought reasoning before providing final answers. You fill the critical gap between design (Architect) and validation (Validator) by providing deep logical reasoning.",
+        "tone": "analytical",
+        "style": "rigorous"
+      },
+      "note": "NVIDIA NIM API — free credits ($25/account). Primary: Nemotron-Super-49B (reasoning). To add more keys: comma-separate in NVIDIA_API_KEY env var. Models updated: 2026-05-12. Update script: curl https://integrate.api.nvidia.com/v1/models | jq.",
+      "healthCheck": {
+        "type": "api",
+        "url": "https://integrate.api.nvidia.com/v1/models",
+        "timeout": 5000
+      }
+    }
+  ]
+}
