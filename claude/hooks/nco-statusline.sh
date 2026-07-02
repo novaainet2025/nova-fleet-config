@@ -723,3 +723,4 @@ _AX_TEXT=$(cat "${_CACHE_DIR}/ax-text" 2>/dev/null)
 _AX_LINE1=$(echo "$_AX_TEXT" | head -1)
 [ -n "$_HF_DISP" ] && echo -e "  ${_HF_DISP}"
 [ -n "$_AX_LINE1" ] && echo -e "  ${_AX_LINE1}"
+exit 0
