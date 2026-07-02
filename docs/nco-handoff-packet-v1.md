@@ -177,6 +177,13 @@ if not ok:
 print(f"ACCEPT: {packet['summary']}")
 ```
 
+### v1.1 — 절단 참조의 크로스머신 fetch (2026-07-03 구현)
+절단 시 전문을 발신측 로컬 파일 대신 **NCO 서버에 POST 영속**하고 `handoff_id` 참조로 교체:
+`'. Full packet: handoff_id=<id> (GET <base>/api/handoff?task_id=<task_id>)`
+- base URL: `NCO_HANDOFF_API` → `FLEET_CENTRAL_URL` → `http://localhost:6200` 순 폴백
+- 서버 불달/거부 시 구 로컬 파일 방식 폴백 + `[unfetchable-local]` 마커로 수신측에 한계 명시
+- 발신측 summary는 스펙 §1(≤200자)로 클램프 — 서버 스키마가 400으로 거부하는 스펙 위반 방지
+
 ### Phase 3: NCO Mesh Integration (Week 3)
 Update `src/core/event-bus.ts` to emit handoff packets on `session:handoff` event type.
 

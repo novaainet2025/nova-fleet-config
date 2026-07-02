@@ -8,6 +8,9 @@ import json
 import os
 import subprocess
 import sys
+import urllib.error
+import urllib.request
+from urllib.parse import quote
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -54,7 +57,7 @@ def make_packet(args):
             "description": args.desc,
         },
         "outcome": args.outcome,
-        "summary": args.summary,
+        "summary": args.summary if len(args.summary) <= 200 else args.summary[:197] + "...",  # 스펙 §1: max 200자 (서버 스키마가 강제)
         "evidence": evidence,
         "artifacts": artifacts,
         "unverified": unverified,
@@ -85,21 +88,63 @@ def fit_summary(summary, budget):
     return summary[: budget - 3] + "..."
 
 
+def handoff_api_base_url():
+    return (
+        os.getenv("NCO_HANDOFF_API")
+        or os.getenv("FLEET_CENTRAL_URL")
+        or "http://localhost:6200"
+    ).rstrip("/")
+
+
+def post_handoff_packet(packet, packet_json):
+    # v1.1: 절단 시 전문을 발신측 로컬 파일 대신 NCO 서버에 영속 — 수신측 크로스머신 fetch 가능
+    base_url = handoff_api_base_url()
+    request = urllib.request.Request(
+        f"{base_url}/api/handoff",
+        data=packet_json.encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            if response.status != 200:
+                return None
+            body = json.loads(response.read().decode("utf-8"))
+    except (OSError, urllib.error.URLError, json.JSONDecodeError):
+        return None
+    if body.get("accepted") is True and body.get("id") is not None:
+        return base_url, body["id"]
+    return None
+
+
+def save_packet_local(packet, packet_dir):
+    out_dir = Path(packet_dir).expanduser()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    packet_path = out_dir / f"{packet['task']['id']}.json"
+    packet_path.write_text(json.dumps(packet, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return packet_path
+
+
 def message_for_bus(packet, packet_json, packet_dir):
     full_message = f"{packet['outcome']}: {packet_json}"
     if len(full_message) <= 400:
         return full_message, None
 
-    out_dir = Path(packet_dir).expanduser()
-    out_dir.mkdir(parents=True, exist_ok=True)
-    packet_path = out_dir / f"{packet['task']['id']}.json"
-    packet_path.write_text(json.dumps(packet, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
     prefix = f"{packet['outcome']}: outcome={packet['outcome']}, summary='"
-    suffix = f"'. Full packet at {packet_path}"
+    posted = post_handoff_packet(packet, packet_json)
+    if posted is not None:
+        base_url, handoff_id = posted
+        task_id = quote(str(packet["task"]["id"]), safe="")
+        suffix = f"'. Full packet: handoff_id={handoff_id} (GET {base_url}/api/handoff?task_id={task_id})"
+        packet_path = None
+    else:
+        # 서버 불달 시 구 방식 폴백 — 경로가 발신 머신 로컬임을 수신측에 명시
+        packet_path = save_packet_local(packet, packet_dir)
+        suffix = f"'. [unfetchable-local] Full packet at {packet_path}"
+
     summary_budget = 400 - len(prefix) - len(suffix)
     if summary_budget < 0:
-        raise SystemExit(f"truncated message path is too long for 400 chars: {packet_path}")
+        raise SystemExit(f"truncated message reference is too long for 400 chars: {packet_path or suffix}")
     compact_summary = fit_summary(packet["summary"], summary_budget)
     return f"{prefix}{compact_summary}{suffix}", packet_path
 
