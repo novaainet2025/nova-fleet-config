@@ -663,14 +663,11 @@ if [ -n "$_HOST_SLUG" ] && [ "$MY_NAME" != "cli" ]; then
 else
   _NAME_DISP="$(name_color "$MY_NAME")"
 fi
-echo -e "$_NAME_DISP $(bracket_color "$BRACKET") ${GR}📁${RST} ${W}${PROJECT_NAME}${RST}"
-
-# 줄2: API/WS + 에이전트 목록
 TOTAL_AGENTS=${#ORDER[@]}
-echo -e "  ${API_C} ${WS_C} ${GR}[${RST} ${AI_DISPLAY}${GR}]${RST}${ONLINE}/${TOTAL_AGENTS}"
+echo -e "$_NAME_DISP $(bracket_color "$BRACKET") ${API_C} ${WS_C} ${G}${ONLINE}${RST}/${GR}${TOTAL_AGENTS}${RST} ${GR}📁${RST} ${W}${PROJECT_NAME}${RST}"
 
-# 줄3: NCO 사용률 바
-echo -e "  ${GR}NCO${RST} $(nco_bar $_NCO_PCT) $(nco_pct_color $_NCO_PCT) ${GR}(NCO:${RST}${_NCO_CALLS}${GR}↑ 직접:${RST}${_DIRECT_EDITS}${GR}↓)${RST}"
+# 줄2: NCO 사용률 + 프로바이더 사용량 (합침)
+_NCO_SUMMARY="${GR}NCO${RST}$(nco_pct_color $_NCO_PCT)"
 
 # 줄4: 프로바이더별 오늘 사용량 — 바 형태 (캐시에서 읽기)
 _PUSAGE_FILE="${_CACHE_DIR}/provider-usage.txt"
@@ -740,54 +737,28 @@ if [ -f "$_PUSAGE_FILE" ] && [ -s "$_PUSAGE_FILE" ]; then
     [ "${_or_n:-0}" -gt 1 ] && _APIKEYS_SUFFIX="${_APIKEYS_SUFFIX}${GR}OR:${RST}${G}${_or_n}keys${RST} "
     [ "${_nv_n:-0}" -gt 1 ] && _APIKEYS_SUFFIX="${_APIKEYS_SUFFIX}${GR}NV:${RST}${G}${_nv_n}keys${RST} "
   fi
-  [ -n "$_PUSAGE_LINE" ] && echo -e "  ${GR}오늘${RST} ${_PUSAGE_LINE}${GR}|${RST} ${_APIKEYS_SUFFIX}"
-fi
-
-# 줄5: 사용량 바 (OLL/MLX: 로컬 표시 / Claude API: rate limit 바)
-if [ "$_BACKEND" = "OLL" ] || [ "$_BACKEND" = "MLX" ]; then
-  echo -e "  ${G}local · free · ∞${RST} ${GR}|${RST} ${GR}Ctx:${RST}$(pct_color $CTX_PCT) ${GR}|${RST} ${G}\$0.00${RST}"
+  [ -n "$_PUSAGE_LINE" ] && echo -e "  ${_NCO_SUMMARY} ${GR}|${RST} ${_PUSAGE_LINE}${_APIKEYS_SUFFIX}"
 else
-  echo -e "  ${GR}1일${RST} $(make_bar $RATE_DAY) $(pct_color $RATE_DAY) ${GR}·${RST} ${GR}주별${RST} $(make_bar $RATE_WEEK) $(pct_color $RATE_WEEK) ${GR}|${RST} ${GR}Ctx:${RST}$(pct_color $CTX_PCT) ${GR}|${RST} $(cost_color $COST)"
+  echo -e "  ${_NCO_SUMMARY}"
 fi
 
-# 줄6: 리셋 시각 (OLL/MLX: Ollama 연결 정보 / Claude API: reset 시각)
+# 줄3: Claude 사용량 (compact)
 if [ "$_BACKEND" = "OLL" ] || [ "$_BACKEND" = "MLX" ]; then
-  # Ollama URL (캐시에서 읽기)
-  _OLLAMA_DISPLAY_URL=$(cat "${_CACHE_DIR}/oll-url" 2>/dev/null)
-  # GPU 정보 감지 (Mac: Apple Silicon / WSL: NVIDIA — local, no network)
-  if [ "$(uname)" = "Darwin" ]; then
-    _GPU_LABEL="Apple Silicon"
-  else
-    _GPU_LABEL=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 | sed 's/NVIDIA GeForce //' | cut -c1-12 || echo "GPU")
-  fi
-  _PROXY_PORT="4100"
-  if [ -n "$_OLLAMA_DISPLAY_URL" ]; then
-    echo -e "  ${GR}${_BACKEND} · ${_GPU_LABEL} · ${_OLLAMA_DISPLAY_URL} · proxy:${_PROXY_PORT}${RST}"
-  else
-    echo -e "  ${GR}${_BACKEND} · ${_GPU_LABEL} · proxy:${_PROXY_PORT}${RST}"
-  fi
+  echo -e "  ${G}local${RST} ${GR}Ctx:${RST}$(pct_color $CTX_PCT)"
 else
-  echo -e "  ${GR}↻ 1일${RST} ${DIM}$(fmt_reset $DAY_RESET)${RST} ${GR}·${RST} ${GR}주별${RST} ${DIM}$(fmt_reset $WEEK_RESET)${RST}"
+  echo -e "  ${GR}1일${RST}$(pct_color $RATE_DAY) ${GR}주${RST}$(pct_color $RATE_WEEK) ${GR}Ctx:${RST}$(pct_color $CTX_PCT) $(cost_color $COST) ${GR}↻${RST}${DIM}$(fmt_reset $DAY_RESET)${RST}"
 fi
 
-# Higgsfield 상태 (캐시에서 읽기)
+# 줄4: Higgsfield + AX (한 줄)
 _HF_STATUS=$(cat "${_CACHE_DIR}/hf-status" 2>/dev/null); _HF_STATUS=${_HF_STATUS:-2}
 _HF_CRED=$(cat "${_CACHE_DIR}/hf-cred" 2>/dev/null)
 IFS='|' read -r _HF_C _HF_PLAN _HF_SPEND <<< "$_HF_CRED"
-if [ -n "$_HF_C" ]; then
-  _HF_EXTRA=" · ${C}${_HF_C} cr${RST}${GR} · 오늘 -${_HF_SPEND}"
-else
-  _HF_EXTRA=" · ${DIM}credits…${RST}${GR}"
-fi
+_HF_DISP=""
 case "$_HF_STATUS" in
-  *$'\n'0|0) echo -e "  ${G}Hig${RST} ${GR}v0.1.40 · online${_HF_EXTRA}${RST}" ;;
-  *$'\n'1|1) echo -e "  ${Y}Hig${RST} ${Y}auth-expired — run: higgsfield auth login${RST}" ;;
-  *$'\n'2|2) echo -e "  ${GR}Hig${RST} ${GR}not installed${RST}" ;;
-  *)          echo -e "  ${GR}Hig${RST} ${GR}unknown${RST}" ;;
+  *$'\n'0|0) [ -n "$_HF_C" ] && _HF_DISP="${G}Hig${RST}${GR}:${C}${_HF_C}cr${RST}" || _HF_DISP="${G}Hig${RST}${GR}:on${RST}" ;;
+  *$'\n'1|1) _HF_DISP="${Y}Hig${RST}${R}:expired${RST}" ;;
 esac
-
-# ── nova-ax 상태 (캐시에서 읽기 — 백그라운드 워커가 갱신) ──────
 _AX_TEXT=$(cat "${_CACHE_DIR}/ax-text" 2>/dev/null)
-if [ -n "$_AX_TEXT" ]; then
-  echo -e "$_AX_TEXT"
-fi
+# AX에서 첫 줄만 사용
+_AX_LINE1=$(echo "$_AX_TEXT" | head -1)
+[ -n "$_HF_DISP" ] || [ -n "$_AX_LINE1" ] && echo -e "  ${_HF_DISP}${_HF_DISP:+ ${GR}|${RST} }${_AX_LINE1}"
