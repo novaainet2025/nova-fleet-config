@@ -142,7 +142,11 @@ print(f"done: {json.dumps(packet)}")
 
 Usage: `python send.py task_id "desc" done "result" '[{"tier":"T1","method":"file_read","raw":"/path"}]'`
 
-### Phase 2: Receiver validate.py (Week 2)
+### Phase 2: Receiver validate.py — 구현 완료 (2026-07-03, kangnote-claude-1)
+수신측 통합: `claude/hooks/inter-session-auto-responder.sh`의 `annotate_handoff_line()` — 수신 라인이 `done|partial|failed|question: {json}` 형식이면 handoff-validate.py로 검증해 `[HANDOFF:ACCEPT]` / `[HANDOFF:REJECT reason=...]` 주석을 붙여 LLM에 노출. truncated/청크 라인·자유텍스트·validator 부재 시 무주석 통과(fail-open 하위호환). 경로 오버라이드: `HANDOFF_VALIDATE_BIN`.
+
+#### 원 설계 (참고)
+Phase 2: Receiver validate.py (Week 2)
 ```python
 import json, sys
 
