@@ -89,10 +89,17 @@ if [ "$_lock_age" -gt 8 ]; then
       " 2>/dev/null > "${_CACHE_DIR}/provider-limits.txt" 2>/dev/null
     fi
 
-    # API 키 개수 캐시 (멀티키 프로바이더)
+    # API 키 개수 캐시 (멀티키 프로바이더) — NCO DB와 같은 디렉터리의 ../.env
     _key_info=""
-    _or_keys=$(grep '^OPENROUTER_API_KEYS=' /Users/nova-ai/project/nco/.env 2>/dev/null | cut -d= -f2 | tr ',' '\n' | grep -c .)
-    _nv_keys=$(grep '^NVIDIA_API_KEY=' /Users/nova-ai/project/nco/.env 2>/dev/null | cut -d= -f2 | tr ',' '\n' | grep -c .)
+    _NCO_ENV=""
+    if [ -n "$_NCO_DB" ]; then
+      _NCO_ENV="$(dirname "$(dirname "$_NCO_DB")")/.env"
+    fi
+    [ -z "$_NCO_ENV" ] || [ ! -f "$_NCO_ENV" ] && _NCO_ENV="$HOME/project/nco/.env"
+    [ ! -f "$_NCO_ENV" ] && _NCO_ENV="$HOME/projects/nco/.env"
+    [ ! -f "$_NCO_ENV" ] && _NCO_ENV=""
+    _or_keys=$(grep '^OPENROUTER_API_KEYS=' "$_NCO_ENV" 2>/dev/null | cut -d= -f2 | tr ',' '\n' | grep -c .)
+    _nv_keys=$(grep '^NVIDIA_API_KEY=' "$_NCO_ENV" 2>/dev/null | cut -d= -f2 | tr ',' '\n' | grep -c .)
     echo "OR:${_or_keys:-0}|NV:${_nv_keys:-0}" > "${_CACHE_DIR}/api-keys.txt" 2>/dev/null
 
     # nova-ax statusline (캐시만 — 빠른 경로에서 읽음)
