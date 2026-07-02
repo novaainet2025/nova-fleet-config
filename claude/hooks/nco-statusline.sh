@@ -657,122 +657,69 @@ bracket_color() {
 }
 
 # ── 출력 ──────────────────────────────────────────────────────
-# 줄1: inter-session명(<hostname>-claude-N: host=dim, claude-N=컬러) + 브라켓(dim) + 📁 프로젝트
+# 줄1: <hostname>-<claude-N> [model] 📁 프로젝트
 if [ -n "$_HOST_SLUG" ] && [ "$MY_NAME" != "cli" ]; then
   _NAME_DISP="${DIM}${_HOST_SLUG}-${RST}$(name_color "$MY_NAME")"
 else
   _NAME_DISP="$(name_color "$MY_NAME")"
 fi
 TOTAL_AGENTS=${#ORDER[@]}
-echo -e "$_NAME_DISP $(bracket_color "$BRACKET") ${API_C} ${WS_C} ${G}${ONLINE}${RST}/${GR}${TOTAL_AGENTS}${RST} ${GR}📁${RST} ${W}${PROJECT_NAME}${RST}"
+echo -e "$_NAME_DISP $(bracket_color "$BRACKET") ${GR}📁${RST} ${W}${PROJECT_NAME}${RST}"
 
-# 줄2: NCO 사용률 + 프로바이더 사용량 (합침)
-_NCO_SUMMARY="${GR}NCO${RST}$(nco_pct_color $_NCO_PCT)"
+# 줄2: api/ws + [ 에이전트 라벨 ]N/N
+echo -e "  ${API_C} ${WS_C} ${GR}[${RST} ${AI_DISPLAY}${GR}]${RST}${G}${ONLINE}${RST}/${GR}${TOTAL_AGENTS}${RST}"
 
-# 줄4: 프로바이더별 오늘 사용량 — 바 형태 (캐시에서 읽기)
-_PUSAGE_FILE="${_CACHE_DIR}/provider-usage.txt"
-if [ -f "$_PUSAGE_FILE" ] && [ -s "$_PUSAGE_FILE" ]; then
-  _PUSAGE_LINE=""
-  declare -A _PU_SHORT=(
-    ["claude-code"]="Cla" ["opencode"]="Opn" ["agy"]="Agy"
-    ["codex"]="Cdx" ["cursor-agent"]="Cur" ["copilot"]="Cop"
-    ["openrouter"]="ORT" ["nvidia"]="NIM" ["ollama"]="OLL"
-    ["hermes"]="Hrm" ["mlx"]="MLX" ["higgsfield"]="Hig" ["openclaw"]="Ocl"
-  )
-  # 표시 제외: 비활성 + 로컬 무제한 프로바이더
-  declare -A _PU_DISABLED=(
-    ["gemini"]=1 ["aider"]=1 ["invalid-provider"]=1
-    ["ollama"]=1 ["mlx"]=1
-  )
-  # LIMIT 상태 프로바이더 로드
-  _PLIMIT_FILE="${_CACHE_DIR}/provider-limits.txt"
-  declare -A _PU_LIMITED=()
-  if [ -f "$_PLIMIT_FILE" ] && [ -s "$_PLIMIT_FILE" ]; then
-    while IFS= read -r _lim_id; do
-      [ -n "$_lim_id" ] && _PU_LIMITED["$_lim_id"]=1
-    done < "$_PLIMIT_FILE"
-  fi
-  # LIMIT 프로바이더 먼저 표시 (사용량 목록에 없어도)
-  _pu_count=0
-  declare -A _pu_shown=()
-  if [ -f "$_PLIMIT_FILE" ] && [ -s "$_PLIMIT_FILE" ]; then
-    while IFS= read -r _lim_id; do
-      [ -z "$_lim_id" ] && continue
-      [ -n "${_PU_DISABLED[$_lim_id]}" ] && continue
-      _pu_label="${_PU_SHORT[$_lim_id]}"
-      [ -z "$_pu_label" ] && _pu_label=$(echo "$_lim_id" | cut -c1-3 | sed 's/./\U&/')
-      _PUSAGE_LINE="${_PUSAGE_LINE}${GR}${_pu_label}${RST} ${R}LIMIT${RST} "
-      _pu_shown["$_lim_id"]=1
-      ((_pu_count++))
-    done < "$_PLIMIT_FILE"
-  fi
-  # 나머지 사용량 순 표시 (LIMIT 포함 최대 6개)
-  while IFS='|' read -r _pu_id _pu_total _pu_ok _pu_fail; do
-    [ -z "$_pu_id" ] && continue
-    [ "$_pu_count" -ge 11 ] && break
-    [ -n "${_pu_shown[$_pu_id]}" ] && continue
-    [ -n "${_PU_DISABLED[$_pu_id]}" ] && continue
-    _pu_label="${_PU_SHORT[$_pu_id]}"
-    [ -z "$_pu_label" ] && _pu_label=$(echo "$_pu_id" | cut -c1-3 | sed 's/./\U&/')
-    # 성공률 계산
-    if [ "$_pu_total" -gt 0 ]; then
-      _sr=$(( _pu_ok * 100 / _pu_total ))
-    else
-      _sr=0
-    fi
-    # 성공률 색상
-    if   [ "$_sr" -ge 90 ]; then _mc="$G"
-    elif [ "$_sr" -ge 70 ]; then _mc="$Y"
-    else                          _mc="$R"
-    fi
-    _PUSAGE_LINE="${_PUSAGE_LINE}${GR}${_pu_label}${RST}:${W}${_pu_total}${RST}${_mc}(${_sr}%)${RST} "
-    ((_pu_count++))
-  done < "$_PUSAGE_FILE"
-  # API 키 개수 표시 (멀티키 프로바이더)
-  _APIKEYS_FILE="${_CACHE_DIR}/api-keys.txt"
-  _APIKEYS_SUFFIX=""
-  if [ -f "$_APIKEYS_FILE" ]; then
-    IFS='|' read -r _ak_or _ak_nv < "$_APIKEYS_FILE"
-    _or_n="${_ak_or#OR:}"; _nv_n="${_ak_nv#NV:}"
-    [ "${_or_n:-0}" -gt 1 ] && _APIKEYS_SUFFIX="${_APIKEYS_SUFFIX}${GR}OR:${RST}${G}${_or_n}keys${RST} "
-    [ "${_nv_n:-0}" -gt 1 ] && _APIKEYS_SUFFIX="${_APIKEYS_SUFFIX}${GR}NV:${RST}${G}${_nv_n}keys${RST} "
-  fi
-  if [ -n "$_PUSAGE_LINE" ]; then
-    # 6개 이하면 1줄, 초과면 2줄로 분리
-    if [ "$_pu_count" -le 6 ]; then
-      echo -e "  ${_NCO_SUMMARY} ${GR}|${RST} ${_PUSAGE_LINE}${_APIKEYS_SUFFIX}"
-    else
-      # 앞 6개 / 나머지 분리
-      _line1="" ; _line2="" ; _li=0
-      for _seg in $_PUSAGE_LINE; do
-        if [ "$_li" -lt 6 ]; then _line1="${_line1}${_seg} "
-        else _line2="${_line2}${_seg} "; fi
-        ((_li++))
-      done
-      echo -e "  ${_NCO_SUMMARY} ${GR}|${RST} ${_PUSAGE_LINE}${_APIKEYS_SUFFIX}"
-    fi
-  fi
-else
-  echo -e "  ${_NCO_SUMMARY}"
-fi
+# 줄3: NCO 사용률 바 + 화살표
+echo -e "  ${GR}NCO${RST} $(nco_bar $_NCO_PCT) $(nco_pct_color $_NCO_PCT) ${GR}(NCO:${RST}${_NCO_CALLS}${G}↑${RST} ${GR}직접:${RST}${_DIRECT_EDITS}${Y}↓${RST}${GR})${RST}"
 
-# 줄3: Claude 사용량 (compact)
+# 줄4-5: 사용량 + 리셋 시간 + 리밋 프로바이더
 if [ "$_BACKEND" = "OLL" ] || [ "$_BACKEND" = "MLX" ]; then
   echo -e "  ${G}local${RST} ${GR}Ctx:${RST}$(pct_color $CTX_PCT)"
 else
-  echo -e "  ${GR}1일${RST}$(pct_color $RATE_DAY) ${GR}주${RST}$(pct_color $RATE_WEEK) ${GR}Ctx:${RST}$(pct_color $CTX_PCT) $(cost_color $COST) ${GR}↻${RST}${DIM}$(fmt_reset $DAY_RESET)${RST}"
+  # 리밋 프로바이더 라벨 수집
+  _LIMIT_DISP=""
+  _PLIMIT_FILE="${_CACHE_DIR}/provider-limits.txt"
+  if [ -f "$_PLIMIT_FILE" ] && [ -s "$_PLIMIT_FILE" ]; then
+    while IFS= read -r _lim_id; do
+      [ -z "$_lim_id" ] && continue
+      _lim_label="${SHORT[$_lim_id]}"
+      if [ -z "$_lim_label" ]; then
+        _raw=$(echo "$_lim_id" | tr -cd 'a-zA-Z0-9' | cut -c1-3)
+        _first=$(printf '%s' "$_raw" | cut -c1 | tr 'a-z' 'A-Z')
+        _rest=$(printf '%s' "$_raw" | cut -c2-)
+        _lim_label="${_first}${_rest}"
+      fi
+      _LIMIT_DISP="${_LIMIT_DISP} ${R}${_lim_label}${RST}${R}⛔${RST}"
+    done < "$_PLIMIT_FILE"
+  fi
+  echo -e "  ${GR}1일${RST} $(make_bar $RATE_DAY) $(pct_color $RATE_DAY) ${GR}·${RST} ${GR}주별${RST} $(make_bar $RATE_WEEK) $(pct_color $RATE_WEEK) ${GR}|${RST} ${GR}Ctx:${RST}$(pct_color $CTX_PCT) ${GR}|${RST} $(cost_color $COST)${_LIMIT_DISP}"
+  echo -e "  ${GR}↻${RST} ${GR}1일${RST} ${DIM}$(fmt_reset $DAY_RESET)${RST} ${GR}·${RST} ${GR}주별${RST} ${DIM}$(fmt_reset $WEEK_RESET)${RST}"
 fi
 
-# 줄4: Higgsfield + AX (한 줄)
+# 줄6: Higgsfield + AX
 _HF_STATUS=$(cat "${_CACHE_DIR}/hf-status" 2>/dev/null); _HF_STATUS=${_HF_STATUS:-2}
 _HF_CRED=$(cat "${_CACHE_DIR}/hf-cred" 2>/dev/null)
 IFS='|' read -r _HF_C _HF_PLAN _HF_SPEND <<< "$_HF_CRED"
 _HF_DISP=""
+_HF_VER=""
+command -v higgsfield &>/dev/null && _HF_VER=$(higgsfield --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
 case "$_HF_STATUS" in
-  *$'\n'0|0) [ -n "$_HF_C" ] && _HF_DISP="${G}Hig${RST}${GR}:${C}${_HF_C}cr${RST}" || _HF_DISP="${G}Hig${RST}${GR}:on${RST}" ;;
-  *$'\n'1|1) _HF_DISP="${Y}Hig${RST}${R}:expired${RST}" ;;
+  *$'\n'0|0)
+    _hf_parts="${G}Hig${RST}"
+    [ -n "$_HF_VER" ] && _hf_parts="${_hf_parts} ${DIM}v${_HF_VER}${RST}"
+    _hf_parts="${_hf_parts} ${GR}·${RST} ${G}online${RST}"
+    [ -n "$_HF_C" ] && _hf_parts="${_hf_parts} ${GR}·${RST} ${C}${_HF_C}${RST} ${GR}cr${RST}"
+    [ -n "$_HF_SPEND" ] && _hf_parts="${_hf_parts} ${GR}·${RST} ${GR}오늘${RST} ${Y}${_HF_SPEND}${RST}"
+    _HF_DISP="$_hf_parts"
+    ;;
+  *$'\n'1|1)
+    _hf_parts="${Y}Hig${RST}"
+    [ -n "$_HF_VER" ] && _hf_parts="${_hf_parts} ${DIM}v${_HF_VER}${RST}"
+    _hf_parts="${_hf_parts} ${GR}·${RST} ${R}expired${RST}"
+    _HF_DISP="$_hf_parts"
+    ;;
 esac
 _AX_TEXT=$(cat "${_CACHE_DIR}/ax-text" 2>/dev/null)
-# AX에서 첫 줄만 사용
 _AX_LINE1=$(echo "$_AX_TEXT" | head -1)
-[ -n "$_HF_DISP" ] || [ -n "$_AX_LINE1" ] && echo -e "  ${_HF_DISP}${_HF_DISP:+ ${GR}|${RST} }${_AX_LINE1}"
+[ -n "$_HF_DISP" ] && echo -e "  ${_HF_DISP}"
+[ -n "$_AX_LINE1" ] && echo -e "  ${_AX_LINE1}"
