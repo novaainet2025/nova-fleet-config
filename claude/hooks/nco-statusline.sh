@@ -1,7 +1,6 @@
 #!/bin/bash
 # NCO AI Status Line — 컬러 + 정확한 세션명 + OS별 백엔드 레이블
 # v2 — fast-path + background refresh (v2.1.109 timeout 대응)
-# FLEET_SYNC_TEST=3d80605-autosync-ok (2026-07-03 자동싱크 검증용 — grep으로 확인)
 #
 # 아키텍처:
 #   - 모든 네트워크 호출은 캐시에서 읽는다 (< 50ms)

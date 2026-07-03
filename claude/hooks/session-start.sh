@@ -14,20 +14,22 @@ PROJECT_DIR="${CLAUDE_PROJECT_DIR:-/Users/nova-ai/project/nco}"
 cd "$PROJECT_DIR" 2>/dev/null || exit 0
 
 # ========================================
-# Find the actual Claude Code PID (our grandparent: bash -> /bin/sh -> claude)
+# Find the actual Claude Code PID — topmost claude/node 조상 탐색 (no-break)
+# 버그 수정 2026-07-03: 가장 가까운 조상(break, 5단계)이 아니라 가장 위 조상(no-break, 8단계).
+# 근거: 가까운 조상만 쓰면 nco-statusline.sh(8단계 topmost)와 다른 PID 키 → 두 훅이
+# 같은 pid 파일을 서로 다른 PID로 갱신 → stale-cleanup이 번갈아 삭제 → 이름 셔플.
+# PPID/$$ fallback 제거: ephemeral 셸 PID 기록 → 즉시 stale → 다음 턴 이름 재배정.
 # ========================================
 _CLAUDE_PID=""
 _CHECK_PID=$$
-for _i in 1 2 3 4 5; do
+for _i in 1 2 3 4 5 6 7 8; do
     _CHECK_PID=$(ps -o ppid= -p "$_CHECK_PID" 2>/dev/null | tr -d ' ')
     [ -z "$_CHECK_PID" ] && break
     _CMD=$(ps -o comm= -p "$_CHECK_PID" 2>/dev/null)
-    if echo "$_CMD" | grep -qE '^(claude|node)$'; then
-        _CLAUDE_PID="$_CHECK_PID"
-        break
-    fi
+    echo "$_CMD" | grep -qE '^(claude|node)$' && _CLAUDE_PID="$_CHECK_PID"
 done
-NCO_SESSION_ID="${_CLAUDE_PID:-${PPID:-$$}}"
+# 조상을 못 찾으면 빈 문자열 — pid 파일 기록 금지 (이하 if [ -n "$NCO_SESSION_ID" ] 가드)
+NCO_SESSION_ID="$_CLAUDE_PID"
 
 # ========================================
 # NCO_NAME — CLI Identity (PID-file based reservation)
@@ -36,7 +38,8 @@ NCO_SESSION_ID="${_CLAUDE_PID:-${PPID:-$$}}"
 NCO_NAMES_DIR="/tmp/nco-names"
 mkdir -p "$NCO_NAMES_DIR" 2>/dev/null
 
-if [ -z "$NCO_NAME" ]; then
+if [ -z "$NCO_NAME" ] && [ -n "$NCO_SESSION_ID" ]; then
+    # NCO_SESSION_ID가 비어있으면 pid 파일 기록 금지 (ephemeral PID 오염 방지)
     # Atomic name reservation using mkdir lock (macOS-compatible)
     _LOCK_DIR="$NCO_NAMES_DIR/.lock.d"
     _LOCK_WAIT=0

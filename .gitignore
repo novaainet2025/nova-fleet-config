@@ -18,3 +18,13 @@ dist/
 out/
 __pycache__/
 *.pyc
+
+# NCO 로컬 생성 파일 — 머신별 오버레이, fleet SSOT 아님
+# (dirty tree로 git pull --rebase 실패하는 재발 방지)
+provider-tools/
+nco/db/
+nco/.env
+nco/dist/
+nco/node_modules/
+claude/machine-overlay/
+*.overlay.json
