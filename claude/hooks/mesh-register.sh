@@ -130,6 +130,10 @@ curl -s --connect-timeout 1 --max-time 3 -X POST "$NCO_URL/api/mesh/heartbeat" \
   }" >/dev/null 2>&1
 
 # ─── 백그라운드 하트비트 데몬 시작 ──────────────────────────────────
+# mesh agentId 고유화 (2026-07-03): frozen env 대신 nco-name-resolver 로 세션
+# 고유 이름 사용 → 여러 세션 all claude-1 축출 thrashing 방지.
+_MRN=$(bash "$HOME/.claude/hooks/nco-name-resolver.sh" 2>/dev/null)
+[ -n "$_MRN" ] && NCO_NAME="$_MRN"
 # 기존 데몬이 있으면 중복 실행 방지
 DAEMON_PID_FILE="/tmp/mesh-heartbeat-daemon-${NCO_SESSION_ID}.pid"
 if [ -f "$DAEMON_PID_FILE" ]; then

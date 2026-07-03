@@ -128,6 +128,10 @@ for _rf in /tmp/mesh-responder-*.pid; do
 done
 
 # ─── 데몬 자가 복구: 이 세션에 데몬이 없으면 시작 ─────────────────────
+# mesh agentId 고유화 (2026-07-03): frozen env 대신 nco-name-resolver 로 세션
+# 고유 이름 사용 → 여러 세션 all claude-1 축출 thrashing 방지.
+_MRN=$(bash "$HOME/.claude/hooks/nco-name-resolver.sh" 2>/dev/null)
+[ -n "$_MRN" ] && MY_NAME="$_MRN"
 # (세션 시작 전에 daemon 코드가 추가된 경우 포함)
 if [ -n "$NCO_SESSION_ID" ] && [ -n "$MY_NAME" ]; then
     DAEMON_PID_FILE="/tmp/mesh-heartbeat-daemon-${NCO_SESSION_ID}.pid"
