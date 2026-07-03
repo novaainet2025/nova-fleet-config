@@ -138,7 +138,15 @@ fi
 # Tier 2: 직접 Ollama API — qwen3:32b 또는 사용 가능한 첫 모델
 if [ -z "$REVIEW" ]; then
     _OLLAMA_MODEL=$(curl -s http://localhost:11434/api/tags 2>/dev/null \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); ms=d.get('models',[]); print(ms[0]['name'] if ms else '')" 2>/dev/null)
+        | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+ms=[m['name'] for m in d.get('models',[]) if 'embed' not in m['name'].lower()]
+for pref in ['qwen3','llama3','gemma']:
+    for m in ms:
+        if pref in m.lower(): print(m); sys.exit()
+if ms: print(ms[0])
+" 2>/dev/null)
     if [ -n "$_OLLAMA_MODEL" ]; then
         REVIEW=$(curl -s -m 120 http://localhost:11434/api/generate \
             -H "Content-Type: application/json" \
