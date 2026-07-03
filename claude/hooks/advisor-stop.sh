@@ -140,7 +140,7 @@ if [ -z "$REVIEW" ]; then
     _OLLAMA_MODEL=$(curl -s http://localhost:11434/api/tags 2>/dev/null \
         | python3 -c "import sys,json; d=json.load(sys.stdin); ms=d.get('models',[]); print(ms[0]['name'] if ms else '')" 2>/dev/null)
     if [ -n "$_OLLAMA_MODEL" ]; then
-        REVIEW=$(curl -s -m 60 http://localhost:11434/api/generate \
+        REVIEW=$(curl -s -m 120 http://localhost:11434/api/generate \
             -H "Content-Type: application/json" \
             -d "$(python3 -c "import json,sys; print(json.dumps({'model': sys.argv[1], 'prompt': sys.argv[2], 'stream': False, 'options': {'num_predict': 800}}))" \
                 "$_OLLAMA_MODEL" "$PROMPT")" 2>/dev/null \
