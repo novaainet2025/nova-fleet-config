@@ -56,7 +56,9 @@ if [ "$_lock_age" -gt 8 ]; then
       for _db_candidate in \
         "$HOME/project/nco/db/nco.db" \
         "$HOME/projects/nco/db/nco.db" \
-        "$HOME/nco/db/nco.db"; do
+        "$HOME/nco/db/nco.db" \
+        "$HOME/projects/neural-cli-orchestrator/db/nco.db" \
+        "/Users/nova-ai/project/nco/db/nco.db"; do
         [ -f "$_db_candidate" ] && { _NCO_DB="$_db_candidate"; break; }
       done
     fi
@@ -91,22 +93,31 @@ PYEOF
           AND created_at >= datetime(strftime('%Y-%m-%d', 'now', '+9 hours') || ' 00:00:00', '-9 hours')
         GROUP BY assigned_to
         ORDER BY total DESC;
-      " > "${_CACHE_DIR}/provider-usage.txt" 2>/dev/null
+      " > "${_CACHE_DIR}/provider-usage.txt.tmp" 2>/dev/null && mv -f "${_CACHE_DIR}/provider-usage.txt.tmp" "${_CACHE_DIR}/provider-usage.txt"
     fi
 
-    # 프로바이더 리밋 감지 (최근 실패 — 확실한 리밋 패턴만)
+    # 프로바이더 리밋 감지: ①최근 실패 응답의 확실한 리밋 문구 ②circuit_states의 open 서킷(quota/rate-limit/auth)
+    # — tasks 텍스트 매칭만으로는 서킷이 이미 열려 즉시 차단(409)되는 뒤이은 실패를 놓친다
+    # (2026-07-03 kangnote 실측: cursor-agent quota 서킷 open인데도 ⛔ 미표시)
     if [ -f "$_NCO_DB" ]; then
-      _nco_sqlite3 "$_NCO_DB" "
-        SELECT DISTINCT assigned_to
-        FROM tasks
-        WHERE status='failed'
-          AND (response LIKE '%hit your usage limit%'
-               OR response LIKE '%exceeded your monthly quota%'
-               OR response LIKE '%ActionRequiredError%usage limit%'
-               OR response LIKE '%set a Spend Limit%')
-          AND created_at > datetime('now', '-6 hours')
-        ORDER BY created_at DESC;
-      " > "${_CACHE_DIR}/provider-limits.txt" 2>/dev/null
+      {
+        _nco_sqlite3 "$_NCO_DB" "
+          SELECT DISTINCT assigned_to
+          FROM tasks
+          WHERE status='failed'
+            AND (response LIKE '%hit your usage limit%'
+                 OR response LIKE '%exceeded your monthly quota%'
+                 OR response LIKE '%ActionRequiredError%usage limit%'
+                 OR response LIKE '%set a Spend Limit%')
+            AND created_at > datetime('now', '-6 hours');
+        "
+        _nco_sqlite3 "$_NCO_DB" "
+          SELECT agent_id
+          FROM circuit_states
+          WHERE state='open'
+            AND reason IN ('quota','rate-limit','auth');
+        "
+      } | sort -u > "${_CACHE_DIR}/provider-limits.txt.tmp" 2>/dev/null && mv -f "${_CACHE_DIR}/provider-limits.txt.tmp" "${_CACHE_DIR}/provider-limits.txt"
     fi
 
     # API 키 개수 캐시 (멀티키 프로바이더) — NCO DB와 같은 디렉터리의 ../.env
