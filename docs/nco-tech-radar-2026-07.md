@@ -3,7 +3,7 @@
 조사 주체: kangnote-claude-1. 방법: 병렬 리서치 에이전트 4갈래(GitHub 갭 카테고리 / 커뮤니티 Reddit·HN·YouTube / MCP·Claude Code·fleet 생태계 / 학술 축).
 별점·라이선스는 GitHub API로 조사 시점 검증(T1). 커뮤니티 주장은 [PRIMARY]=빌더 블로그·HN 원문 / [AGG]=애그리게이터(저신뢰) 구분.
 학술 축(copilot 위임)은 웹 접근 실패로 미검증 산출 → 불채택 (컨텍스트 엔지니어링 일반론만 §6에 일부 반영).
-선행 문서: [nco-port-candidates-2026-07.md](nco-port-candidates-2026-07.md) (7개 레포 — P0 전부·P1 대부분 구현 완료).
+관련 문서: [nco-port-candidates-2026-07.md](nco-port-candidates-2026-07.md) · **자율성 축(자율 학습·성장·무인완주·A2A)은 [nco-autonomy-axis-2026-07.md](nco-autonomy-axis-2026-07.md)** — 별도 심층 조사 (7개 레포 — P0 전부·P1 대부분 구현 완료).
 
 ## 0. 요약 — 카테고리별 1픽
 
