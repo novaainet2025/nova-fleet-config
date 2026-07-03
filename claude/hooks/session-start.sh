@@ -41,7 +41,7 @@ mkdir -p "$NCO_NAMES_DIR" 2>/dev/null
 if [ -z "$NCO_NAME" ] && [ -n "$NCO_SESSION_ID" ]; then
     # NCO_SESSION_ID가 비어있으면 pid 파일 기록 금지 (ephemeral PID 오염 방지)
     # Atomic name reservation using mkdir lock (macOS-compatible)
-    _LOCK_DIR="$NCO_NAMES_DIR/.lock.d"
+    _LOCK_DIR="$NCO_NAMES_DIR/.lockdir"
     _LOCK_WAIT=0
     while ! mkdir "$_LOCK_DIR" 2>/dev/null; do
         sleep 0.1
@@ -53,7 +53,8 @@ if [ -z "$NCO_NAME" ] && [ -n "$NCO_SESSION_ID" ]; then
     for _pidfile in "$NCO_NAMES_DIR"/claude-*.pid; do
         [ -f "$_pidfile" ] || continue
         _rpid=$(cat "$_pidfile" 2>/dev/null | tr -d '[:space:]')
-        if [ -z "$_rpid" ] || ! ps -p "$_rpid" >/dev/null 2>&1; then
+        [ -z "$_rpid" ] && continue  # skip empty (mid-write protection)
+        if ! ps -p "$_rpid" >/dev/null 2>&1; then
             rm -f "$_pidfile"
         fi
     done
@@ -78,8 +79,9 @@ if [ -z "$NCO_NAME" ] && [ -n "$NCO_SESSION_ID" ]; then
             _NUM=$((_NUM + 1))
         done
 
-        # 4. Reserve it
-        echo "$NCO_SESSION_ID" > "$NCO_NAMES_DIR/claude-${_NUM}.pid"
+        # 4. Reserve it (atomic write: tmp→mv prevents empty-file stale deletion)
+        _PID_TMP="$NCO_NAMES_DIR/claude-${_NUM}.pid.tmp.$$"
+        printf '%s\n' "$NCO_SESSION_ID" > "$_PID_TMP" && mv "$_PID_TMP" "$NCO_NAMES_DIR/claude-${_NUM}.pid"
         echo "claude-${_NUM}" > "$NCO_NAMES_DIR/.last-assigned"
         NCO_NAME="claude-${_NUM}"
     fi

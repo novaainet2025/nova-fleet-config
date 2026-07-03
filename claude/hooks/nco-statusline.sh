@@ -250,21 +250,29 @@ _detect_session_name() {
       if [ "$conflict_pid" = "$my_pid" ]; then
         echo "$NCO_NAME"; return
       else
-        # 충돌: 내 PID로 새 번호 배정 (죽은 pid 파일은 건너뜀)
+        # 충돌: 내 PID로 새 번호 배정 (.lockdir 공유 뮤텍스 — session-start.sh 동기화)
+        local _lk="${names_dir}/.lockdir" _lw=0
+        while ! mkdir "$_lk" 2>/dev/null; do _lw=$((_lw+1)); [ $_lw -ge 10 ] && break; sleep 0.1; done
         local n=1
         while [ -f "${names_dir}/claude-${n}.pid" ]; do n=$((n+1)); done
-        echo "$my_pid" > "${names_dir}/claude-${n}.pid" 2>/dev/null
+        local _ptmp="${names_dir}/claude-${n}.pid.tmp.$$"
+        printf '%s\n' "$my_pid" > "$_ptmp" 2>/dev/null && mv "$_ptmp" "${names_dir}/claude-${n}.pid" 2>/dev/null
+        rmdir "$_lk" 2>/dev/null
         echo "claude-${n}"; return
       fi
     fi
     echo "$NCO_NAME"; return
   fi
 
-  # PID 파일도 NCO_NAME도 없음 → 다음 번호 자동 할당
+  # PID 파일도 NCO_NAME도 없음 → 다음 번호 자동 할당 (.lockdir 공유 뮤텍스)
   if [ -d "$names_dir" ]; then
+    local _lk="${names_dir}/.lockdir" _lw=0
+    while ! mkdir "$_lk" 2>/dev/null; do _lw=$((_lw+1)); [ $_lw -ge 10 ] && break; sleep 0.1; done
     local n=1
     while [ -f "${names_dir}/claude-${n}.pid" ]; do n=$((n+1)); done
-    echo "$my_pid" > "${names_dir}/claude-${n}.pid" 2>/dev/null
+    local _ptmp="${names_dir}/claude-${n}.pid.tmp.$$"
+    printf '%s\n' "$my_pid" > "$_ptmp" 2>/dev/null && mv "$_ptmp" "${names_dir}/claude-${n}.pid" 2>/dev/null
+    rmdir "$_lk" 2>/dev/null
     echo "claude-${n}"; return
   fi
   echo "cli"
