@@ -11,6 +11,14 @@
 NCO_NAMES_DIR="/tmp/nco-names"
 mkdir -p "$NCO_NAMES_DIR"
 
+# 단일 소스 라우팅 (2026-07-03): resolver가 claude-N 주면 즉시 반환. 아래 레거시
+# walk+cleanup(ps -p 기반 live 파일 삭제 = 셔플 원인)은 resolver 부재 시에만 fallback.
+_rsv="$HOME/.claude/hooks/nco-name-resolver.sh"
+if [ -f "$_rsv" ]; then
+  _rn=$(bash "$_rsv" 2>/dev/null)
+  [ -n "$_rn" ] && { echo "$_rn"; exit 0; }
+fi
+
 MY_PID=""
 # Walk up to find the topmost claude / node process in the ancestry (no-break)
 _pid=$$

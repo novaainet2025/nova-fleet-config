@@ -38,6 +38,11 @@ NCO_SESSION_ID="$_CLAUDE_PID"
 NCO_NAMES_DIR="/tmp/nco-names"
 mkdir -p "$NCO_NAMES_DIR" 2>/dev/null
 
+# 단일 소스 라우팅 (2026-07-03): resolver가 NCO_NAME 채우면 아래 레거시 예약블록
+# (ps -p 기반 live 파일 삭제 + 최저번호 재배정 = 셔플 근원)은 자동 skip.
+_rsv="$HOME/.claude/hooks/nco-name-resolver.sh"
+[ -f "$_rsv" ] && { _rn=$(bash "$_rsv" 2>/dev/null); [ -n "$_rn" ] && NCO_NAME="$_rn"; }
+
 if [ -z "$NCO_NAME" ] && [ -n "$NCO_SESSION_ID" ]; then
     # NCO_SESSION_ID가 비어있으면 pid 파일 기록 금지 (ephemeral PID 오염 방지)
     # Atomic name reservation using mkdir lock (macOS-compatible)

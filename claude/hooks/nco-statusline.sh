@@ -216,6 +216,12 @@ _BACKEND=$(_detect_backend)
 # 세 스크립트가 서로 다른 PID를 키로 쓰면 같은 pid 파일을 각자 다르게 해석·덮어써
 # 이름이 매 턴 셔플되는 원인이 됐음 (T1 실측 2026-07-03).
 _detect_session_name() {
+  # 단일 소스 라우팅 (2026-07-03): nco-name-resolver.sh 에 위임 — 등록된 live 세션은
+  # 재번호/삭제 안 함. 아래 레거시는 resolver 부재 시 fallback (셔플 원인 경로).
+  local _rsv="$HOME/.claude/hooks/nco-name-resolver.sh" _rn=""
+  [ -f "$_rsv" ] && _rn=$(bash "$_rsv" 2>/dev/null)
+  [ -n "$_rn" ] && { echo "$_rn"; return; }
+
   local names_dir="/tmp/nco-names"
   local my_pid="" ck cm
 

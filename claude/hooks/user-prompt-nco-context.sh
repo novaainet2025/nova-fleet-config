@@ -22,6 +22,13 @@ if [ -z "$NCO_SESSION_ID" ]; then
   # 조상을 못 찾으면 기록 금지 — 이 경우 NCO_NAME은 pid 파일 조회 없이 env 그대로 사용
 fi
 
+# 단일 소스 라우팅 (2026-07-03): nco-name-resolver.sh 로 NCO_NAME 위임. 값이 오면
+# 아래 레거시 블록(conflict-renumber = 셔플 원인)은 skip. 부재 시에만 fallback.
+_rsv="$HOME/.claude/hooks/nco-name-resolver.sh"; _rn=""
+[ -f "$_rsv" ] && _rn=$(bash "$_rsv" 2>/dev/null)
+if [ -n "$_rn" ]; then
+  NCO_NAME="$_rn"
+else
 # Resolve NCO_NAME: PID 파일 조회 우선 (env 오염 방지)
 # NCO_SESSION_ID가 비어있으면 pid 파일 기록 금지 (ephemeral PID 오염 방지)
 _found_name=""
@@ -58,6 +65,7 @@ elif [ -n "$NCO_SESSION_ID" ]; then
   echo "$NCO_SESSION_ID" > "/tmp/nco-names/claude-${_n}.pid" 2>/dev/null
   NCO_NAME="claude-${_n}"
 fi
+fi  # end 단일 소스 라우팅 else (레거시 fallback)
 MY_NAME="${NCO_NAME:-cli}"
 
 # NCO health check (2s max)

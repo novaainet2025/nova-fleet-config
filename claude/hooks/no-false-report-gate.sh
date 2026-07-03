@@ -41,7 +41,8 @@ if [ -z "$TRANSCRIPT_PATH" ] || [ ! -f "$TRANSCRIPT_PATH" ]; then
 fi
 
 # ── 마지막 user prompt 이후의 assistant text + tool_use 추출 ──────
-ANALYSIS=$(python3 <<PYEOF 2>/dev/null
+run_analysis() {
+python3 <<PYEOF 2>/dev/null
 import json, sys, re
 
 TRANSCRIPT = "$TRANSCRIPT_PATH"
@@ -69,8 +70,11 @@ for i in range(len(lines) - 1, -1, -1):
             text = ' '.join(c.get('text','') for c in content if isinstance(c, dict))
         else:
             text = str(content)
-        # 시스템 리마인더만 있고 실제 prompt 없으면 skip
-        if not text.strip() or text.strip().startswith('<system-reminder>'):
+        # 시스템 리마인더 / Stop 훅 자체 피드백만 있으면 skip (2026-07-03).
+        _ts = text.strip()
+        if (not _ts or _ts.startswith('<system-reminder>')
+                or _ts.startswith('Stop hook feedback:')
+                or '거짓·미검증 보고 차단 게이트' in _ts):
             continue
         last_user = i
         break
@@ -169,7 +173,21 @@ result = {
 }
 print(json.dumps(result, ensure_ascii=False))
 PYEOF
-)
+}
+
+# ── flush-settle 재시도 (2026-07-03): Stop 훅이 마지막 텍스트블록(영수증) flush 전에
+# 읽으면 has_receipt 거짓음성 → 잠깐 기다렸다 재분석해 정상 영수증 오차단 방지. ──
+ANALYSIS=$(run_analysis)
+_settle=0
+while [ "$_settle" -lt 6 ]; do
+    _hr=$(echo "$ANALYSIS" | python3 -c "import json,sys;print(1 if json.load(sys.stdin).get('has_receipt') else 0)" 2>/dev/null || echo 1)
+    _ed=$(echo "$ANALYSIS" | python3 -c "import json,sys;print(json.load(sys.stdin).get('edits',0))" 2>/dev/null || echo 0)
+    _cw=$(echo "$ANALYSIS" | python3 -c "import json,sys;print(len(json.load(sys.stdin).get('completion_words',[])))" 2>/dev/null || echo 0)
+    if [ "$_hr" = "1" ] || { [ "$_ed" -eq 0 ] && [ "$_cw" -eq 0 ]; }; then break; fi
+    sleep 0.15
+    ANALYSIS=$(run_analysis)
+    _settle=$((_settle + 1))
+done
 
 if [ -z "$ANALYSIS" ] || [ "$ANALYSIS" = "ERR" ]; then
     exit 0
