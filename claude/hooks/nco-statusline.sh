@@ -83,6 +83,9 @@ PYEOF
     }
 
     if [ -f "$_NCO_DB" ]; then
+      # 원자적 쓰기: temp→mv (python3 폴백 경로의 느린 쓰기 중 동시 읽기가
+      # "파일 존재+크기0"을 관측하는 race 방지 — kangnote T1 실측 2026-07-03)
+      _tmp_usage="${_CACHE_DIR}/provider-usage.tmp.$$"
       _nco_sqlite3 "$_NCO_DB" "
         SELECT assigned_to,
                COUNT(*) as total,
@@ -93,13 +96,15 @@ PYEOF
           AND created_at >= datetime(strftime('%Y-%m-%d', 'now', '+9 hours') || ' 00:00:00', '-9 hours')
         GROUP BY assigned_to
         ORDER BY total DESC;
-      " > "${_CACHE_DIR}/provider-usage.txt.tmp" 2>/dev/null && mv -f "${_CACHE_DIR}/provider-usage.txt.tmp" "${_CACHE_DIR}/provider-usage.txt"
+      " > "$_tmp_usage" 2>/dev/null && mv -f "$_tmp_usage" "${_CACHE_DIR}/provider-usage.txt" 2>/dev/null
     fi
 
-    # 프로바이더 리밋 감지: ①최근 실패 응답의 확실한 리밋 문구 ②circuit_states의 open 서킷(quota/rate-limit/auth)
-    # — tasks 텍스트 매칭만으로는 서킷이 이미 열려 즉시 차단(409)되는 뒤이은 실패를 놓친다
-    # (2026-07-03 kangnote 실측: cursor-agent quota 서킷 open인데도 ⛔ 미표시)
+    # 프로바이더 리밋 감지: ①최근 실패 응답 확실한 리밋 문구 ②circuit_states open/half-open+quota
+    # tasks 텍스트 매칭만으로는 서킷이 열린 뒤 즉시 차단(409)되는 실패를 놓침
+    # (2026-07-03 kangnote T1: cursor-agent quota open인데 ⛔ 미표시)
+    # 원자적 쓰기 temp→mv (race 방지)
     if [ -f "$_NCO_DB" ]; then
+      _tmp_limits="${_CACHE_DIR}/provider-limits.tmp.$$"
       {
         _nco_sqlite3 "$_NCO_DB" "
           SELECT DISTINCT assigned_to
@@ -109,15 +114,17 @@ PYEOF
                  OR response LIKE '%exceeded your monthly quota%'
                  OR response LIKE '%ActionRequiredError%usage limit%'
                  OR response LIKE '%set a Spend Limit%')
-            AND created_at > datetime('now', '-6 hours');
+            AND created_at > datetime('now', '-6 hours')
+          ORDER BY created_at DESC;
         "
+        # circuit_states open/half-open + quota/limit/rate reason → 즉시 ⛔
         _nco_sqlite3 "$_NCO_DB" "
           SELECT agent_id
           FROM circuit_states
-          WHERE state='open'
-            AND reason IN ('quota','rate-limit','auth');
+          WHERE state IN ('open','half-open')
+            AND (reason LIKE '%quota%' OR reason LIKE '%limit%' OR reason LIKE '%rate%');
         "
-      } | sort -u > "${_CACHE_DIR}/provider-limits.txt.tmp" 2>/dev/null && mv -f "${_CACHE_DIR}/provider-limits.txt.tmp" "${_CACHE_DIR}/provider-limits.txt"
+      } 2>/dev/null | sort -u > "$_tmp_limits" 2>/dev/null && mv -f "$_tmp_limits" "${_CACHE_DIR}/provider-limits.txt" 2>/dev/null
     fi
 
     # API 키 개수 캐시 (멀티키 프로바이더) — NCO DB와 같은 디렉터리의 ../.env
@@ -203,48 +210,47 @@ _BACKEND=$(_detect_backend)
 [ "$_BACKEND" = "mlx" ] && _BACKEND="MLX"
 
 # ── 세션 이름 감지 (PID 파일 기반 — NCO_NAME 오염 방지) ──────
+# ── 세션 이름 감지 (PID 파일 기반) ──────────────────────────
+# 버그 수정 2026-07-03: 가까운 조상(break) → 가장 먼 조상(no-break) 방식으로 통일.
+# inter-session-name.sh / user-prompt-nco-context.sh 와 동일한 topmost 탐색.
+# 세 스크립트가 서로 다른 PID를 키로 쓰면 같은 pid 파일을 각자 다르게 해석·덮어써
+# 이름이 매 턴 셔플되는 원인이 됐음 (T1 실측 2026-07-03).
 _detect_session_name() {
   local names_dir="/tmp/nco-names"
-  local my_pid=""
+  local my_pid="" ck cm
 
-  # Claude Code 프로세스 PID 탐색 (프로세스 트리 위로)
-  local ck=$$
-  for _i in 1 2 3 4 5; do
+  # topmost claude/node 조상 탐색 (no-break — 계속 갱신해서 가장 위 조상 사용)
+  ck=$$
+  for _i in 1 2 3 4 5 6 7 8; do
     ck=$(ps -o ppid= -p "$ck" 2>/dev/null | tr -d ' ')
     [ -z "$ck" ] && break
-    local cm
     cm=$(ps -o comm= -p "$ck" 2>/dev/null)
-    if echo "$cm" | grep -qE '^(claude|node)$'; then
-      my_pid="$ck"; break
-    fi
+    echo "$cm" | grep -qE '^(claude|node)$' && my_pid="$ck"
   done
 
   [ -z "$my_pid" ] && { echo "${NCO_NAME:-cli}"; return; }
 
   # PID 파일에서 내 세션 이름 찾기
   if [ -d "$names_dir" ]; then
+    local pf stored
     for pf in "$names_dir"/claude-*.pid; do
       [ -f "$pf" ] || continue
-      local stored
-      stored=$(cat "$pf" 2>/dev/null | tr -d '[:space:]')
+      stored=$(tr -d '[:space:]' < "$pf" 2>/dev/null)
       if [ "$stored" = "$my_pid" ]; then
-        basename "$pf" .pid
-        return
+        basename "$pf" .pid; return
       fi
     done
   fi
 
   # PID 파일 없으면 NCO_NAME 사용, 그것도 없으면 자동 할당
   if [ -n "$NCO_NAME" ]; then
-    # NCO_NAME 교차검증: 다른 세션이 같은 이름을 쓰고 있는지 확인
-    local conflict_pf="${names_dir}/${NCO_NAME}.pid"
+    local conflict_pf="${names_dir}/${NCO_NAME}.pid" conflict_pid
     if [ -f "$conflict_pf" ]; then
-      local conflict_pid
-      conflict_pid=$(cat "$conflict_pf" 2>/dev/null | tr -d '[:space:]')
+      conflict_pid=$(tr -d '[:space:]' < "$conflict_pf" 2>/dev/null)
       if [ "$conflict_pid" = "$my_pid" ]; then
         echo "$NCO_NAME"; return
       else
-        # 충돌: 내 PID로 새 번호 배정
+        # 충돌: 내 PID로 새 번호 배정 (죽은 pid 파일은 건너뜀)
         local n=1
         while [ -f "${names_dir}/claude-${n}.pid" ]; do n=$((n+1)); done
         echo "$my_pid" > "${names_dir}/claude-${n}.pid" 2>/dev/null
@@ -254,9 +260,8 @@ _detect_session_name() {
     echo "$NCO_NAME"; return
   fi
 
-  # PID 파일도 NCO_NAME도 없음 → mesh-register 실행 전 상태
-  # 자동으로 번호 할당하고 PID 파일 생성 (mesh-register와 충돌 방지: 이미 존재하면 재사용)
-  if [ -n "$my_pid" ] && [ -d "$names_dir" ]; then
+  # PID 파일도 NCO_NAME도 없음 → 다음 번호 자동 할당
+  if [ -d "$names_dir" ]; then
     local n=1
     while [ -f "${names_dir}/claude-${n}.pid" ]; do n=$((n+1)); done
     echo "$my_pid" > "${names_dir}/claude-${n}.pid" 2>/dev/null

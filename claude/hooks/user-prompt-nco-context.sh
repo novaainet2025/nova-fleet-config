@@ -7,50 +7,52 @@ echo "[$(date +%H:%M:%S)] HOOK_START user-prompt-nco-context.sh" >> /tmp/claude-
 INPUT=$(cat)
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-/Users/nova-ai/project/nco}"
-# Resolve NCO_SESSION_ID: env var > process tree walk
+# Resolve NCO_SESSION_ID: env var > topmost claude/node 조상 PID 탐색
+# 버그 수정 2026-07-03: 가까운 조상(break) + $PPID/$$ fallback 제거 → topmost no-break로 통일.
+# $PPID/$$ fallback이 ephemeral 셸 PID를 pid 파일에 기록 → stale-cleanup이 그 파일 삭제
+# → 다음 턴에 이름 재배정 셔플이 반복되던 문제. 진짜 claude 조상을 못 찾으면 기록 안 함.
 if [ -z "$NCO_SESSION_ID" ]; then
   _CK=$$
-  for _i in 1 2 3 4 5; do
+  for _i in 1 2 3 4 5 6 7 8; do
     _CK=$(ps -o ppid= -p "$_CK" 2>/dev/null | tr -d ' ')
     [ -z "$_CK" ] && break
     _CM=$(ps -o comm= -p "$_CK" 2>/dev/null)
-    if echo "$_CM" | grep -qE '^(claude|node)$'; then
-      NCO_SESSION_ID="$_CK"
+    echo "$_CM" | grep -qE '^(claude|node)$' && NCO_SESSION_ID="$_CK"
+  done
+  # 조상을 못 찾으면 기록 금지 — 이 경우 NCO_NAME은 pid 파일 조회 없이 env 그대로 사용
+fi
+
+# Resolve NCO_NAME: PID 파일 조회 우선 (env 오염 방지)
+# NCO_SESSION_ID가 비어있으면 pid 파일 기록 금지 (ephemeral PID 오염 방지)
+_found_name=""
+if [ -n "$NCO_SESSION_ID" ]; then
+  for _pf in /tmp/nco-names/claude-*.pid; do
+    [ -f "$_pf" ] || continue
+    _rp=$(tr -d '[:space:]' < "$_pf" 2>/dev/null)
+    if [ "$_rp" = "$NCO_SESSION_ID" ]; then
+      _found_name=$(basename "$_pf" .pid)
       break
     fi
   done
-  NCO_SESSION_ID="${NCO_SESSION_ID:-${PPID:-$$}}"
 fi
-
-# Resolve NCO_NAME: ALWAYS check PID-file first (overrides inherited env to prevent duplicate names)
-_found_name=""
-for _pf in /tmp/nco-names/claude-*.pid; do
-  [ -f "$_pf" ] || continue
-  _rp=$(cat "$_pf" 2>/dev/null | tr -d '[:space:]')
-  if [ "$_rp" = "$NCO_SESSION_ID" ]; then
-    _found_name=$(basename "$_pf" .pid)
-    break
-  fi
-done
 if [ -n "$_found_name" ]; then
-  NCO_NAME="$_found_name"  # ground-truth: PID file match wins over inherited env
-elif [ -n "$NCO_NAME" ]; then
-  # inherited env — check for conflict (another session already owns this name)
+  NCO_NAME="$_found_name"  # ground-truth: PID file match wins
+elif [ -n "$NCO_SESSION_ID" ] && [ -n "$NCO_NAME" ]; then
+  # inherited env — check for conflict
   _cpf="/tmp/nco-names/${NCO_NAME}.pid"
   if [ -f "$_cpf" ]; then
-    _cpid=$(cat "$_cpf" 2>/dev/null | tr -d '[:space:]')
+    _cpid=$(tr -d '[:space:]' < "$_cpf" 2>/dev/null)
     if [ "$_cpid" != "$NCO_SESSION_ID" ]; then
       # conflict: find next available slot
       _n=1; while [ -f "/tmp/nco-names/claude-${_n}.pid" ]; do _n=$((_n+1)); done
       echo "$NCO_SESSION_ID" > "/tmp/nco-names/claude-${_n}.pid" 2>/dev/null
       NCO_NAME="claude-${_n}"
     fi
-    # else: inherited name matches pid file — already registered, keep
   else
     # inherited name, no file yet — register it
     echo "$NCO_SESSION_ID" > "$_cpf" 2>/dev/null
   fi
-else
+elif [ -n "$NCO_SESSION_ID" ]; then
   # no env, no pid file — assign next slot
   _n=1; while [ -f "/tmp/nco-names/claude-${_n}.pid" ]; do _n=$((_n+1)); done
   echo "$NCO_SESSION_ID" > "/tmp/nco-names/claude-${_n}.pid" 2>/dev/null
