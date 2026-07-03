@@ -6,7 +6,7 @@
 #   - ~/.claude/improvements/{project}-{date}-{time}.md
 #   - docs/improvements/{project}-{date}-{time}.md (프로젝트 내)
 
-NOTE_GENERATOR="{{HOME}}/projects/security-kb/note-generator.sh"
+NOTE_GENERATOR="/Users/nova-ai/projects/security-kb/note-generator.sh"
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 PROJECT_NAME=$(basename "$PROJECT_DIR")
 DATETIME=$(date +%Y-%m-%dT%H:%M)
@@ -126,31 +126,58 @@ ${PREV_PENDING:-없음}
 ### 📊 품질 평가
 점수: X/10 | 이유: (한 줄)"
 
-# ── NCO 프로바이더(Ollama)로 생성 ───────────────────────────────
+# ── NCO 프로바이더(Ollama)로 생성 — 3-tier 폴백 ─────────────────
+# Tier 1: note-generator.sh (존재 시)
+# Tier 2: 직접 Ollama API (:11434)
+# Tier 3: MLX 프록시 (:4100)
 REVIEW=""
 if [ -f "$NOTE_GENERATOR" ]; then
     REVIEW=$(bash "$NOTE_GENERATOR" "$PROMPT" 800 2>/dev/null)
 fi
 
-# ── AI 실패 시 기본 노트 생성 ────────────────────────────────────
+# Tier 2: 직접 Ollama API — qwen3:32b 또는 사용 가능한 첫 모델
 if [ -z "$REVIEW" ]; then
+    _OLLAMA_MODEL=$(curl -s http://localhost:11434/api/tags 2>/dev/null \
+        | python3 -c "import sys,json; d=json.load(sys.stdin); ms=d.get('models',[]); print(ms[0]['name'] if ms else '')" 2>/dev/null)
+    if [ -n "$_OLLAMA_MODEL" ]; then
+        REVIEW=$(curl -s -m 60 http://localhost:11434/api/generate \
+            -H "Content-Type: application/json" \
+            -d "$(python3 -c "import json,sys; print(json.dumps({'model': sys.argv[1], 'prompt': sys.argv[2], 'stream': False, 'options': {'num_predict': 800}}))" \
+                "$_OLLAMA_MODEL" "$PROMPT")" 2>/dev/null \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('response',''))" 2>/dev/null)
+    fi
+fi
+
+# Tier 3: MLX 프록시 (:4100)
+if [ -z "$REVIEW" ]; then
+    REVIEW=$(curl -s -m 60 http://localhost:4100/v1/chat/completions \
+        -H "Content-Type: application/json" \
+        -d "$(python3 -c "import json,sys; print(json.dumps({'model':'local','messages':[{'role':'user','content':sys.argv[1]}],'max_tokens':800}))" \
+            "$PROMPT")" 2>/dev/null \
+        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['choices'][0]['message']['content'])" 2>/dev/null)
+fi
+
+# ── AI 실패 시 기본 노트 — git 데이터 기반 구조화 ─────────────────
+if [ -z "$REVIEW" ]; then
+    _CHANGED_LIST=$(echo "$CHANGED_FILES" | head -5 | sed 's/^/- /' | tr '\n' '|' | sed 's/|$//')
+    _COMMIT_CNT=$(echo "$LAST_COMMITS" | grep -c '^-' || echo 0)
     REVIEW="### ✅ 이번 작업 요약
-AI 오프라인 — git 데이터 기반 자동 기록
+AI 오프라인 — git 데이터 기반 자동 기록 (커밋 ${_COMMIT_CNT}건)
 
 ### 🔄 Before → After
 | 이전 문제 | 이번 해결 | 파일/코드 |
 |-----------|-----------|-----------|
-| (Ollama 온라인 시 자동 분석) | - | - |
+$(echo "$LAST_COMMITS" | head -3 | sed 's/^- /| / ; s/$/ | - | - |/')
 
 ### 🚧 미완성·미작업 항목
 $(echo "$CHANGED_FILES" | head -5 | sed 's/^/- /')
 
 ### 💡 다음 세션 권장 개선사항
-1. Ollama 시작 후 재분석: bash ~/projects/security-kb/claude-ollama-launch.sh
-2. 변경 파일 $(echo "$CHANGED_FILES" | grep -c .) 개 코드 리뷰 진행
+1. [High] Ollama 온라인 시 advisor-stop.sh 재실행으로 상세 분석
+2. [Medium] 변경 파일 $(echo "$CHANGED_FILES" | wc -l | tr -d ' ')개 코드 리뷰 진행
 
 ### 📊 품질 평가
-점수: -/10 | 이유: AI 오프라인"
+점수: -/10 | 이유: AI 오프라인 (Ollama/MLX 미응답)"
 fi
 
 # ── [통일 위치 1] ~/.claude/improvements/ 저장 ─────────────────
@@ -240,5 +267,5 @@ print(json.dumps({'systemMessage': msg}))
 fi
 
 # ── 주기적 통합 (7일마다, 오래된 파일 5개+ 시) ──────────────────
-CONSOLIDATE_SCRIPT="{{HOME}}/projects/security-kb/notes-consolidate.sh"
+CONSOLIDATE_SCRIPT="/Users/nova-ai/projects/security-kb/notes-consolidate.sh"
 [ -f "$CONSOLIDATE_SCRIPT" ] && bash "$CONSOLIDATE_SCRIPT" "$PROJECT_NAME" 2>/dev/null &
