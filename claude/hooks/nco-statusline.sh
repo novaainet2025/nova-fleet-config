@@ -118,12 +118,12 @@ PYEOF
             AND created_at > datetime('now', '-6 hours')
           ORDER BY created_at DESC;
         "
-        # circuit_states open/half-open + quota/limit/rate reason → 즉시 ⛔
+        # circuit_states open/half-open → 즉시 ⛔ (reason 무관 — generic/quota/limit 모두)
+        # (2026-07-03 subnote T1: reason='generic'이 quota/limit/rate 필터에 안 걸려 미표시)
         _nco_sqlite3 "$_NCO_DB" "
           SELECT agent_id
           FROM circuit_states
-          WHERE state IN ('open','half-open')
-            AND (reason LIKE '%quota%' OR reason LIKE '%limit%' OR reason LIKE '%rate%');
+          WHERE state IN ('open','half-open');
         "
       } 2>/dev/null | sort -u > "$_tmp_limits" 2>/dev/null && mv -f "$_tmp_limits" "${_CACHE_DIR}/provider-limits.txt" 2>/dev/null
     fi
