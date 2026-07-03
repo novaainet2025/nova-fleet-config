@@ -46,7 +46,11 @@ if [ "$APPLY" -eq 1 ]; then
   _pull_out=$(cd "$REPO" && $_TIMEOUT git pull --quiet --rebase origin main 2>&1) && \
     log "pull 완료 ($(cd "$REPO" && git log --oneline -1))" || \
     log "pull 실패(오프라인/dirty?): $_pull_out — 로컬 canonical로 apply 진행"
-  [ "$_stashed" = "1" ] && ( cd "$REPO" && git stash pop -q 2>/dev/null ) || true
+  if [ "$_stashed" = "1" ]; then
+    if ! ( cd "$REPO" && git stash pop -q 2>/dev/null ); then
+      log "⚠ stash pop 충돌 — fleet-config 클론에 수동 확인 필요: cd $REPO && git stash show && git stash drop"
+    fi
+  fi
   log "apply.sh --force 실행 (보존가드 우회, 백업+롤백 내장)"
   bash "$REPO/install/apply.sh" --force 2>&1 | grep -E '^\[fleet-apply\]' | tail -5 || \
     log "apply 실패 — 수동 점검 필요"

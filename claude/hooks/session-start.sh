@@ -103,13 +103,14 @@ fi
 # ========================================
 NCO_SESSION_DIR="/tmp/nco-sessions"
 mkdir -p "$NCO_SESSION_DIR" 2>/dev/null
-NCO_SESSION_FILE="$NCO_SESSION_DIR/$NCO_SESSION_ID.json"
 
 # Clean sessions older than 24h
 find "$NCO_SESSION_DIR" -name "*.json" -mmin +1440 -delete 2>/dev/null
 
-# Create session state file (now includes NCO_NAME)
-cat > "$NCO_SESSION_FILE" <<SESSIONJSON
+# NCO_SESSION_ID가 비어있으면 세션 파일 생성 금지 (경로 "/tmp/nco-sessions/.json" + invalid JSON 방지)
+if [ -n "$NCO_SESSION_ID" ]; then
+    NCO_SESSION_FILE="$NCO_SESSION_DIR/$NCO_SESSION_ID.json"
+    cat > "$NCO_SESSION_FILE" <<SESSIONJSON
 {
   "session_id": "$NCO_SESSION_ID",
   "nco_name": "$NCO_NAME",
@@ -121,6 +122,7 @@ cat > "$NCO_SESSION_FILE" <<SESSIONJSON
   "last_activity": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 }
 SESSIONJSON
+fi
 
 # ========================================
 # Header
