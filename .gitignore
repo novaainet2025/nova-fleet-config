@@ -22,6 +22,7 @@ __pycache__/
 # NCO 로컬 생성 파일 — 머신별 오버레이, fleet SSOT 아님
 # (dirty tree로 git pull --rebase 실패하는 재발 방지)
 provider-tools/
+claude/provider-tools/
 nco/db/
 nco/.env
 nco/dist/
