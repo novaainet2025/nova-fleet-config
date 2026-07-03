@@ -44,7 +44,7 @@
 
 - HN 회의론: mem0/zep/letta류 "연산마다 LLM" 메모리는 op당 200-500ms + 100k 메모리에 월 $1-3k — **"SQLite 파일 하나로 시작하라"**가 실전 기본값.
 - **MARM 선택이 이 노선과 일치** (SQLite WAL, LLM 비의존 recall). mem0/graphiti는 에이전트별 자동 추출·시간축이 필요해질 때만.
-- 파일럿 관찰 항목: smart_recall 인덱스 분리 소견(2026-07-03 발견) — log 저장소와 시맨틱 인덱스 불일치.
+- ~~파일럿 관찰 항목: smart_recall 인덱스 분리 소견~~ → **원인 확정(서버 소스 T1, macstudio)**: 설계상 분리 — log_entry는 log_entries 테이블, smart_recall 시맨틱은 memories 테이블만 대상. 로그 회수는 marm_log_show 또는 smart_recall include_logs:true(LIKE 부분일치). 첫 recall 20s+는 sentence-transformers lazy 웜업(이후 p95 20-31ms).
 
 ## 4. 신뢰성 전술 수렴점 [PRIMARY/AGG]
 
