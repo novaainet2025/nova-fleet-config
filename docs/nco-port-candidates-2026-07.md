@@ -1,5 +1,12 @@
 # NCO 이식 후보 분석 — 소형 에이전트 군집 오픈소스 조사 (2026-07-02)
 
+> **진행 상태 갱신 (2026-07-03, kangnote-claude-1)** — fleet 협업 구현 현황:
+> - **P0 (1~4번): 전부 구현·E2E 완료** — 실패분류기(1754e37)+preflight(동일)+면제(99c3369) / 상태기계·orphan·멱등cancel·dead-letter·drain(57114b2, E2E 검증) / 서킷(de5b449→025b457 오탐수정)
+> - **P1: 5번 ✅ Verifier Gate v0/v1(5ff76c3, 7c3c0dd) / 7번 ✅ Handoff Packet v1+v1.1 3단 파이프라인 완성(발신 scripts/handoff-send.py·수신 annotate·서버 POST /api/handoff, 왕복 E2E) / 8번 ✅ PRM trajectory-guard(05d0e45) / 6번 증거번들 미착수**
+> - **협업축: 14번 MARM 🔶 kangNote 파일럿 T1 완료, 중앙배치 제안서 v2(docs/marm-central-deployment-proposal.md) 양측 사용자 결재 대기 / 18번 ✅ comm-graph 게이트(shadow 기본, enforce 403 검증) / 15~17·19번 미착수**
+> - **P2 (9~13번): 대부분 미착수** (12번 부분 — 가용성 게이트 409/failover)
+> - 부수 성과: 이식 과정 실측으로 서킷 오탐(성공출력 인용 트립)·BullMQ 큐명·CHECK 스키마 등 기존 버그 6+건 발견·수정
+
 조사 주체: kangnote-claude-1 (Fable 5). 대상 7개 레포 README 전수 분석 (Explore 에이전트 3개 병렬).
 대상: opencode-swarm(376★), optio(990★), claudectl(188★), MARM-Systems(306★), fractals(641★), swarmclaw(598★), agency-swarm(4.5k★).
 
