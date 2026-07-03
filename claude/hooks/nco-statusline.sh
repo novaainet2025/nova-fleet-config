@@ -60,8 +60,28 @@ if [ "$_lock_age" -gt 8 ]; then
         [ -f "$_db_candidate" ] && { _NCO_DB="$_db_candidate"; break; }
       done
     fi
+    # sqlite3 CLI 폴백: CLI 없는 환경(WSL/Ubuntu sqlite3 미설치 등)에서 python3 모듈로 대체
+    # 사용법: _nco_sqlite3 <db_path> <sql> → stdout (2>/dev/null 처리 내장)
+    _nco_sqlite3() {
+      local _db="$1" _sql="$2"
+      if command -v sqlite3 >/dev/null 2>&1; then
+        sqlite3 "$_db" "$_sql" 2>/dev/null
+      else
+        python3 - "$_db" "$_sql" 2>/dev/null <<'PYEOF'
+import sys, sqlite3 as sq
+db, sql = sys.argv[1], sys.argv[2]
+try:
+    conn = sq.connect(f"file:{db}?mode=ro", uri=True); cur = conn.cursor()
+    cur.execute(sql)
+    for row in cur.fetchall(): print('|'.join(str(c) if c is not None else '' for c in row))
+    conn.close()
+except Exception: pass
+PYEOF
+      fi
+    }
+
     if [ -f "$_NCO_DB" ]; then
-      sqlite3 "$_NCO_DB" "
+      _nco_sqlite3 "$_NCO_DB" "
         SELECT assigned_to,
                COUNT(*) as total,
                SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) as ok,
@@ -71,12 +91,12 @@ if [ "$_lock_age" -gt 8 ]; then
           AND created_at >= datetime(strftime('%Y-%m-%d', 'now', '+9 hours') || ' 00:00:00', '-9 hours')
         GROUP BY assigned_to
         ORDER BY total DESC;
-      " 2>/dev/null > "${_CACHE_DIR}/provider-usage.txt" 2>/dev/null
+      " > "${_CACHE_DIR}/provider-usage.txt" 2>/dev/null
     fi
 
     # 프로바이더 리밋 감지 (최근 실패 — 확실한 리밋 패턴만)
     if [ -f "$_NCO_DB" ]; then
-      sqlite3 "$_NCO_DB" "
+      _nco_sqlite3 "$_NCO_DB" "
         SELECT DISTINCT assigned_to
         FROM tasks
         WHERE status='failed'
@@ -86,7 +106,7 @@ if [ "$_lock_age" -gt 8 ]; then
                OR response LIKE '%set a Spend Limit%')
           AND created_at > datetime('now', '-6 hours')
         ORDER BY created_at DESC;
-      " 2>/dev/null > "${_CACHE_DIR}/provider-limits.txt" 2>/dev/null
+      " > "${_CACHE_DIR}/provider-limits.txt" 2>/dev/null
     fi
 
     # API 키 개수 캐시 (멀티키 프로바이더) — NCO DB와 같은 디렉터리의 ../.env
