@@ -9,6 +9,7 @@
 - 실행 trace를 자연어로 반성(reflection)해 프롬프트를 진화시키는 gradient-free 옵티마이저. RL(GRPO) 대비 +20% 성능을 **35× 적은 롤아웃**으로 달성, 20~100개 예제면 프로덕션 최적화 가능.
 - Pareto frontier로 다양한 프롬프트 후보 유지 — 분기 많은 에이전트 워크플로우에 특히 적합.
 - 프로덕션 적용 사례 존재 (Decagon: 대화 분석 supervisor 모델 프롬프트 최적화).
+- 대안 판정(심층 조사): TextGrad(3.6k★)는 2024-12 이후 정체, MS Trace(744★)는 베타 — **DSPy(35.8k★)+GEPA가 유일한 라이브 베팅**. 독립 패키지 gepa-ai/gepa도 프레임워크 비종속으로 사용 가능.
 - **NCO 도입 경로**: 각 프로바이더 persona.systemPrompt를 GEPA로 자동 튜닝. 학습 신호는 이미 있음 — invocation 성공/실패 + verifier PASS/FAIL + leaderboard 점수가 그대로 GEPA의 피드백. Python이므로 사이드카 배치(주기적으로 DB에서 trace 읽어 프롬프트 개선안 생성 → 사람/감독관 승인 후 반영).
 
 ## 2. 자율 성장 — 스킬 라이브러리 (한 번 배우면 영구 재사용)
@@ -22,7 +23,20 @@
   2. `~/.claude/skills/` + fleet-config 배포 체계가 저장·전파 레이어 (이미 있음)
   3. MARM/gbrain 임베딩이 검색 레이어 (이미 있음)
   4. 필요한 신규 코드는 "증류기" 하나: 성공 궤적 → 재사용 스킬 md 변환 + 중복 검사
+- 심층 조사 확인: **Claude Code SKILL.md 스펙 자체가 자가작성 스킬 표준** — 에이전트가 `~/.claude/skills/<x>/SKILL.md`를 쓰면 다음 실행부터 자동 로드, agentskills.io로 에이전트 간 이식. 스킬 마켓플레이스(SkillsMP, LobeHub) 존재. **NCO에겐 빌드가 아니라 설정 수준의 변화.**
 - claudectl Hive Mind(레이더 §17)의 지식 증류·전파와 동일 사상 — fleet 전 머신으로 스킬이 퍼지는 구조.
+
+## 2.5 자기진화 프레임워크 (심층 조사 — 전부 실행 가능 코드, 단 ⚠️ 공통 경고)
+
+| 도구 | ★ | 요지 | NCO 적용 |
+|---|---|---|---|
+| **EvoAgentX** | 3.1k | 에이전틱 워크플로우 빌드·평가·**진화** (TextGrad/MIPRO/AFlow 번들, pip) | **실용 1픽** — NCO 워크플로우 진화 직접 구동 가능. MIT |
+| Darwin-Gödel Machine (Sakana) | 2.2k | 자기 코드 재작성, SWE-bench 20→50% 실증 | 감독된 self-modify 루프의 참조 아키텍처. Apache-2.0 |
+| ADAS (ICLR'25) | 1.6k | 메타 에이전트가 더 나은 에이전트를 코드로 설계 | 오프라인에서 신규 에이전트 구성 탐색→leaderboard로 승격. Apache-2.0 |
+| AgentSquare | 230 | planning/reasoning/tool/memory 모듈 조합 탐색 | NCO 모듈 구조와 일대일 대응 |
+| awesome-agent-evolution | 170 | 684 레포 증거 지도 | 소싱/실사 체크리스트 |
+
+⚠️ **안전 원칙**: 위 전부 "모델 생성 코드를 실행"함 — 자기수정은 반드시 **샌드박스(microsandbox)+서킷브레이커 뒤에서만**. 무인화 = 게이트 제거가 아니라 게이트의 코드화.
 
 ## 3. 상호 인지 — "서로 뭘 하는지" 표준
 
@@ -30,12 +44,14 @@
 - v1.0(2026 초)→v1.2, Linux Foundation Agentic AI Foundation 거버넌스, **150+ 조직 프로덕션 채택**(Google/MS/AWS/Salesforce/SAP/IBM...), GitHub 22k★, SDK 5개 언어(Py/JS/Java/Go/.NET).
 - **Signed Agent Card**: 도메인 소유자의 암호 서명으로 카드 진위 검증 — 탈중앙 발견의 신뢰 모델. **우리 fleet이 겪은 감독관 사칭·승인 캡처 공격의 표준적 해법.**
 - **NCO 도입 경로**: 단계적 — (a) 각 세션/프로바이더에 agent card JSON 발행(현재 mesh heartbeat 확장) (b) swarmclaw가 이미 노출하는 `/.well-known/agent-card.json` 관례 채택 (c) 서명 카드로 피어 신원 검증(장기). inter-session bus를 대체하는 게 아니라 **신원·능력 광고 레이어**로 얹는 것.
+- 표준 통합 확정(심층 조사): IBM ACP는 A2A에 병합, AGNTCY는 Linux Foundation에 기증 — **추적할 표준은 A2A 하나**. Agent Card 위치 관례: `/.well-known/agent.json`.
 
 ## 4. 무인 완주 (한 번 설정 → 끝까지)
 
 - **이미 보유**: 상태기계+orphan 자동복구+dead-letter+retry(57114b2), per-task timeout, Gap 100% 루프(최대 5회), 서킷·게이트. "중간에 죽어도 스스로 일어나는" 기반은 완성.
 - **갭**: "죽지 않고 계속 도는" 루프 — Claude Code 진영의 continuous-loop 패턴(autonomous loop / self-pacing wakeup)과 durable execution(hatchet, 레이더 §4). 핵심 설계 원칙(커뮤니티 수렴): **무인화는 게이트 제거가 아니라 게이트의 코드화** — verifier가 사람 대신 PASS/FAIL을 내리고, 실패가 다음 반복의 입력이 되는 구조(claudectl "verifier-is-the-gradient", 이미 이식 후보 P1-5).
-- **NCO 도입 경로**: kanban-engine+nco-do(이미 있음)에 ①verifier 게이트 통과를 전진 조건으로 ②실패 시 FAIL 출력을 재시도 프롬프트에 주입 ③N회 초과 시만 사람 에스컬레이션. 이 3개 규칙이면 "한 번 설정→완료까지"가 안전하게 성립.
+- 심층 조사 추가: **Ralph Wiggum 루프**(Huntley 패턴, Anthropic B.Cherny 정식화) — 동일 프롬프트를 반복 주입하되 **진행 상태를 컨텍스트가 아닌 git/TODO/파일에 외재화**, Stop hook이 "됐나? 안 됐으면 고치고 계속"을 재주입. 2026-01 최초의 무인 프로덕션 버그 자가치유 사례. NCO 상태기계+핸드오프 패킷과 직결. ⚠️ 주의: LangGraph류 체크포인트 ≠ durable execution — watchdog/자동재개는 별도(우리 서킷·orphan 복구가 그 역할).
+**NCO 도입 경로**: kanban-engine+nco-do(이미 있음)에 ①verifier 게이트 통과를 전진 조건으로 ②실패 시 FAIL 출력을 재시도 프롬프트에 주입 ③N회 초과 시만 사람 에스컬레이션. 이 3개 규칙이면 "한 번 설정→완료까지"가 안전하게 성립.
 
 ## 5. 백그라운드 자가 개선 (sleep-time compute)
 
