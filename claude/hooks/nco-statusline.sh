@@ -103,26 +103,39 @@ PYEOF
     # tasks 텍스트 매칭만으로는 서킷이 열린 뒤 즉시 차단(409)되는 실패를 놓침
     # (2026-07-03 kangnote T1: cursor-agent quota open인데 ⛔ 미표시)
     # 원자적 쓰기 temp→mv (race 방지)
-    if [ -f "$_NCO_DB" ]; then
-      _tmp_limits="${_CACHE_DIR}/provider-limits.tmp.$$"
+    # 1순위: 라이브 권위 상태 /api/agents status=='error' (복구 시 자동 해제 self-correcting).
+    # circuit_states/6h 태스크텍스트는 뒤처져 오탐 유발 → API 불가 시에만 폴백. (2026-07-03 근본수정)
+    _tmp_limits="${_CACHE_DIR}/provider-limits.tmp.$$"
+    _agents_json=$(curl -s -m 1 http://localhost:6200/api/agents 2>/dev/null)
+    if printf '%s' "$_agents_json" | grep -q '"agents"'; then
+      printf '%s' "$_agents_json" | python3 -c "
+import sys,json
+try:
+    d=json.load(sys.stdin)
+    for x in d.get('agents',[]):
+        if str(x.get('status','')).lower()=='error': print(x.get('id'))
+except Exception: pass
+" 2>/dev/null | sort -u > "$_tmp_limits" 2>/dev/null && mv -f "$_tmp_limits" "${_CACHE_DIR}/provider-limits.txt" 2>/dev/null
+    elif [ -f "$_NCO_DB" ]; then
       {
         _nco_sqlite3 "$_NCO_DB" "
-          SELECT DISTINCT assigned_to
-          FROM tasks
-          WHERE status='failed'
-            AND (response LIKE '%hit your usage limit%'
-                 OR response LIKE '%exceeded your monthly quota%'
-                 OR response LIKE '%ActionRequiredError%usage limit%'
-                 OR response LIKE '%set a Spend Limit%')
-            AND created_at > datetime('now', '-6 hours')
-          ORDER BY created_at DESC;
+          SELECT DISTINCT t1.assigned_to
+          FROM tasks t1
+          WHERE t1.status='failed'
+            AND (t1.response LIKE '%hit your usage limit%'
+                 OR t1.response LIKE '%exceeded your monthly quota%'
+                 OR t1.response LIKE '%ActionRequiredError%usage limit%'
+                 OR t1.response LIKE '%set a Spend Limit%')
+            AND t1.created_at > datetime('now', '-6 hours')
+            AND NOT EXISTS (SELECT 1 FROM tasks t2 WHERE t2.assigned_to=t1.assigned_to AND t2.status='completed' AND t2.created_at > t1.created_at)
+          ORDER BY t1.created_at DESC;
         "
         # circuit_states open/half-open → 즉시 ⛔ (reason 무관 — generic/quota/limit 모두)
         # (2026-07-03 subnote T1: reason='generic'이 quota/limit/rate 필터에 안 걸려 미표시)
         _nco_sqlite3 "$_NCO_DB" "
           SELECT agent_id
           FROM circuit_states
-          WHERE state IN ('open','half-open');
+          WHERE state = 'open';
         "
       } 2>/dev/null | sort -u > "$_tmp_limits" 2>/dev/null && mv -f "$_tmp_limits" "${_CACHE_DIR}/provider-limits.txt" 2>/dev/null
     fi
