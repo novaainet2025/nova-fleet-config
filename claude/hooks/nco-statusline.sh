@@ -103,7 +103,9 @@ PYEOF
     # tasks 텍스트 매칭만으로는 서킷이 열린 뒤 즉시 차단(409)되는 실패를 놓침
     # (2026-07-03 kangnote T1: cursor-agent quota open인데 ⛔ 미표시)
     # 원자적 쓰기 temp→mv (race 방지)
-    # 1순위: 라이브 권위 상태 /api/agents status=='error' (복구 시 자동 해제 self-correcting).
+    # 1순위: 라이브 권위 신호 /api/agents gate.available===false (복구 시 자동 해제 self-correcting).
+    # gate={status,reason,available,cooldownUntil} — half-open+실패(available:false)도 정확히 잡고
+    # 복구된 half-open(available:true)은 제외. status 필드는 circuit=open만 반영해 부정확했음(2026-07-04).
     # circuit_states/6h 태스크텍스트는 뒤처져 오탐 유발 → API 불가 시에만 폴백. (2026-07-03 근본수정)
     _tmp_limits="${_CACHE_DIR}/provider-limits.tmp.$$"
     _agents_json=$(curl -s -m 1 http://localhost:6200/api/agents 2>/dev/null)
@@ -113,7 +115,8 @@ import sys,json
 try:
     d=json.load(sys.stdin)
     for x in d.get('agents',[]):
-        if str(x.get('status','')).lower()=='error': print(x.get('id'))
+        g=x.get('gate') or {}
+        if g.get('available') is False: print(x.get('id'))
 except Exception: pass
 " 2>/dev/null | sort -u > "$_tmp_limits" 2>/dev/null && mv -f "$_tmp_limits" "${_CACHE_DIR}/provider-limits.txt" 2>/dev/null
     elif [ -f "$_NCO_DB" ]; then
