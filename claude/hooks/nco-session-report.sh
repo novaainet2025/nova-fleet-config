@@ -39,6 +39,15 @@ PCT=0; [ "$TOTAL" -gt 0 ] && PCT=$((NCO_CALLS * 100 / TOTAL))
 STAGES_JSON="{}"
 [ -f "$STAGE" ] && STAGES_JSON=$(cat "$STAGE" 2>/dev/null || echo "{}")
 
+# ── 노이즈 억제: 워크플로우 상태(task_type+stages)가 지난 출력과 동일하면 재출력 생략 ──
+# 매 턴 동일 리포트 반복(사용자 지적)을 막는다. 진전(단계 완료/타입 변경)이 있을 때만 출력.
+_RPT_STATE="/tmp/nco-report-state-${_SID}"
+_CUR_STATE=$(printf '%s|%s' "$TASK_TYPE" "$STAGES_JSON" | (md5 2>/dev/null || md5sum 2>/dev/null | cut -d' ' -f1))
+if [ -f "$_RPT_STATE" ] && [ "$(cat "$_RPT_STATE" 2>/dev/null)" = "$_CUR_STATE" ]; then
+    exit 0   # 상태 변화 없음 → 리포트 재출력 생략
+fi
+printf '%s' "$_CUR_STATE" > "$_RPT_STATE" 2>/dev/null
+
 python3 - << PYEOF
 import json, sys
 

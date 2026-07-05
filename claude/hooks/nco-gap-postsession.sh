@@ -65,10 +65,15 @@ curl -s -m 2 http://localhost:6200/health 2>/dev/null | grep -q '"status":"healt
     for AI in cursor-agent ollama hermes nvidia codex; do
         if printf '%s' "$_GAP_AGENTS" | python3 -c "
 import json,sys
+# 안정적 가용(available===True AND circuit==closed)일 때만 시도, 그 외엔 skip.
+# fail-closed: API 이상/미발견/half-open flapping/gated 모두 skip → gated 배정 확정 차단 (ERR-013).
 try:
     d=json.load(sys.stdin); a=[x for x in d.get('agents',[]) if x.get('id')==sys.argv[1]]
-    sys.exit(0 if (a and (a[0].get('gate') or {}).get('available') is False) else 1)
-except: sys.exit(1)
+    if not a: sys.exit(0)  # 못 찾음(API 이상) → skip
+    g=a[0].get('gate') or {}; h=a[0].get('health') or {}
+    ok=(g.get('available') is True) and (h.get('circuitState')=='closed')
+    sys.exit(1 if ok else 0)  # exit0=skip
+except Exception: sys.exit(0)  # 파싱 실패 → skip(fail-closed)
 " "$AI" 2>/dev/null; then continue; fi
         RESP=$(curl -s -m 90 -X POST http://localhost:6200/api/task \
             -H 'Content-Type: application/json' \
