@@ -117,6 +117,12 @@ except: print('')
             _tok=$(echo "$_sa" | awk '{print $1}')
             echo "$_tok" | grep -qE '^[A-Za-z0-9_-]{1,40}$' && export NCO_TASK_AGENT="$_tok"
         fi ;;
+    Bash)
+        # delegate.py --ai X 위임 → 대상 에이전트를 스테이지 마킹용으로 추출
+        # (delegate.py는 로컬워커에 /api/task 위임; --ai 값으로 review/verification/구현 등 단계 판정)
+        _da=$(printf '%s' "$CMD" | grep -oE '[-][-]ai[= ]+[A-Za-z0-9_-]+' | head -1 | sed -E 's/[-][-]ai[= ]+//')
+        echo "$_da" | grep -qE '^[A-Za-z0-9_-]{1,40}$' && export NCO_TASK_AGENT="$_da"
+        ;;
 esac
 
 # NCO 사용 카운터 증가 + warned 초기화 + stage 마킹
@@ -175,11 +181,17 @@ if tool in gap_tools:        stages['gap_analysis'] = True
 # nco-task 에이전트 기반 review/verification 단계 마킹 (env 변수 사용)
 task_agent = os.environ.get('NCO_TASK_AGENT', '').lower().replace('-', '_')
 review_agents  = {'cursor_agent', 'cursor', 'review'}
-verify_agents  = {'ollama', 'vllm', 'gemma', 'qwen', 'openrouter', 'verify'}
+verify_agents  = {'ollama', 'vllm', 'gemma', 'qwen', 'hermes', 'mlx', 'remote_mlx', 'nvidia', 'openrouter', 'verify'}
+impl_agents    = {'codex', 'aider'}       # Engineer
+design_agents  = {'opencode'}             # Architect
 if task_agent in review_agents:
     stages['review'] = True
 elif task_agent in verify_agents:
     stages['verification'] = True
+elif task_agent in impl_agents:
+    stages['implementation'] = True
+elif task_agent in design_agents:
+    stages['design'] = True
 
 json.dump(stages, open(sf, 'w'))
 " 2>/dev/null
