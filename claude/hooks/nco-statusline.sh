@@ -119,28 +119,35 @@ try:
         if g.get('available') is False: print(x.get('id'))
 except Exception: pass
 " 2>/dev/null | sort -u > "$_tmp_limits" 2>/dev/null && mv -f "$_tmp_limits" "${_CACHE_DIR}/provider-limits.txt" 2>/dev/null
-    elif [ -f "$_NCO_DB" ]; then
-      {
-        _nco_sqlite3 "$_NCO_DB" "
-          SELECT DISTINCT t1.assigned_to
-          FROM tasks t1
-          WHERE t1.status='failed'
-            AND (t1.response LIKE '%hit your usage limit%'
-                 OR t1.response LIKE '%exceeded your monthly quota%'
-                 OR t1.response LIKE '%ActionRequiredError%usage limit%'
-                 OR t1.response LIKE '%set a Spend Limit%')
-            AND t1.created_at > datetime('now', '-6 hours')
-            AND NOT EXISTS (SELECT 1 FROM tasks t2 WHERE t2.assigned_to=t1.assigned_to AND t2.status='completed' AND t2.created_at > t1.created_at)
-          ORDER BY t1.created_at DESC;
-        "
-        # circuit_states open/half-open → 즉시 ⛔ (reason 무관 — generic/quota/limit 모두)
-        # (2026-07-03 subnote T1: reason='generic'이 quota/limit/rate 필터에 안 걸려 미표시)
-        _nco_sqlite3 "$_NCO_DB" "
-          SELECT agent_id
-          FROM circuit_states
-          WHERE state = 'open';
-        "
-      } 2>/dev/null | sort -u > "$_tmp_limits" 2>/dev/null && mv -f "$_tmp_limits" "${_CACHE_DIR}/provider-limits.txt" 2>/dev/null
+    else
+      # API 불가: 권위 신호(gate.available)를 못 얻으므로 divergent한 fallback(circuit/DB)으로
+      # 캐시를 덮어쓰지 않는다. circuit_states는 gate.available와 다른 질문에 답해서
+      # mlx-오탐/openrouter-누락 같은 불일치를 유발했음(2026-07-05 근본수정, ERR-013).
+      # → 최근(≤300s) last-good 캐시가 있으면 그대로 유지(self-correcting). 캐시가 없거나
+      #   5분 이상 stale일 때만 최후수단으로 DB 추정.
+      _plimit_f="${_CACHE_DIR}/provider-limits.txt"
+      _pl_mt=$(stat -f %m "$_plimit_f" 2>/dev/null || stat -c %Y "$_plimit_f" 2>/dev/null || echo 0)
+      _pl_age=$(( _now_ts - _pl_mt ))
+      if { [ ! -f "$_plimit_f" ] || [ "$_pl_age" -gt 300 ]; } && [ -f "$_NCO_DB" ]; then
+        {
+          _nco_sqlite3 "$_NCO_DB" "
+            SELECT DISTINCT t1.assigned_to
+            FROM tasks t1
+            WHERE t1.status='failed'
+              AND (t1.response LIKE '%hit your usage limit%'
+                   OR t1.response LIKE '%exceeded your monthly quota%'
+                   OR t1.response LIKE '%ActionRequiredError%usage limit%'
+                   OR t1.response LIKE '%set a Spend Limit%')
+              AND t1.created_at > datetime('now', '-6 hours')
+              AND NOT EXISTS (SELECT 1 FROM tasks t2 WHERE t2.assigned_to=t1.assigned_to AND t2.status='completed' AND t2.created_at > t1.created_at)
+            ORDER BY t1.created_at DESC;
+          "
+          _nco_sqlite3 "$_NCO_DB" "
+            SELECT agent_id FROM circuit_states WHERE state = 'open';
+          "
+        } 2>/dev/null | sort -u > "$_tmp_limits" 2>/dev/null && mv -f "$_tmp_limits" "$_plimit_f" 2>/dev/null
+      fi
+      # else: 신선한 last-good 캐시 유지 (아무것도 하지 않음 → divergence 원천 제거)
     fi
 
     # API 키 개수 캐시 (멀티키 프로바이더) — NCO DB와 같은 디렉터리의 ../.env

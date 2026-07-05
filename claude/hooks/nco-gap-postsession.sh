@@ -57,8 +57,19 @@ curl -s -m 2 http://localhost:6200/health 2>/dev/null | grep -q '"status":"healt
     NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     CHANGED_LIST=$(echo "$CHANGED" | tr '\n' ' ' | head -c 1500)
 
-    # cursor-agent에 1차 시도, 실패 시 nvidia
-    for AI in cursor-agent nvidia codex; do
+    # 리밋(gate.available===false) 프로바이더는 건너뛴다 — gated에 배정하면 확정 실패
+    # (사용자 지적 + ERR-013 단일 SoT: cursor-agent/nvidia 등 리밋 시 codex 등 가용으로 직행)
+    _GAP_AGENTS=$(curl -s -m 2 http://localhost:6200/api/agents 2>/dev/null)
+    # cursor-agent(리뷰어) 우선, gated면 skip → 무료 로컬 워커(ollama/hermes) 우선, 최후에만 유료 codex
+    # (사용자 directive "워커=무료 로컬 우선" + tier-policy quality=[cursor-agent,ollama,nvidia])
+    for AI in cursor-agent ollama hermes nvidia codex; do
+        if printf '%s' "$_GAP_AGENTS" | python3 -c "
+import json,sys
+try:
+    d=json.load(sys.stdin); a=[x for x in d.get('agents',[]) if x.get('id')==sys.argv[1]]
+    sys.exit(0 if (a and (a[0].get('gate') or {}).get('available') is False) else 1)
+except: sys.exit(1)
+" "$AI" 2>/dev/null; then continue; fi
         RESP=$(curl -s -m 90 -X POST http://localhost:6200/api/task \
             -H 'Content-Type: application/json' \
             -d "$(python3 -c "import json,sys; print(json.dumps({
