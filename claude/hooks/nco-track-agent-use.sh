@@ -57,7 +57,8 @@ try:
     print(d.get('tool_input', {}).get('command', ''))
 except: print('')
 " 2>/dev/null)
-        echo "$CMD" | grep -qE 'localhost:6200/api/(task|parallel|commander|conductor|mesh/send|agent)' || exit 0
+        # localhost:6200/api/* 직접 호출 OR delegate.py 래퍼(내부에서 /api/task 위임) OR nco-supervisor 위임
+        echo "$CMD" | grep -qE 'localhost:6200/api/(task|parallel|commander|conductor|mesh/send|agent)|delegate\.py' || exit 0
         ;;
 
     # 4) Agent 도구 — NCO가 아님! Explore/Plan만 허용, 나머지는 위반 기록
