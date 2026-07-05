@@ -105,9 +105,12 @@ if done:
 else:
     lines.append("  (없음)")
 
-lines.append("")
-lines.append("── 미완료 단계 (다음 세션 권장) ──")
-if missed:
+# 미완료 단계·NCO사용 나그는 전체 파이프라인이 실제 필요한 new_feature에서만 표시한다.
+# 그 외(config/bug/simple/query/monitoring/unknown)엔 아무 작업도 안 하는 반복 나그가
+# 의미없는 노이즈이므로 제거하고, 사실 정보(사용률·완료단계)만 남긴다. (사용자 지적)
+if task_type == "new_feature" and missed:
+    lines.append("")
+    lines.append("── 미완료 단계 (다음 세션 권장) ──")
     nco_cmds = {
         "discussion":     "/nco-discussion | /nco-task opencode '설계: ...'",
         "design":         "/nco-task opencode '아키텍처: ...'",
@@ -118,13 +121,9 @@ if missed:
     }
     for k in missed:
         lines.append(f"  ⬜ {stage_labels.get(k, k)}  →  {nco_cmds.get(k,'')}")
-else:
-    lines.append("  ✅ 모든 단계 완료!")
-
-if pct < 80 and total >= 3:
-    lines.append("")
-    lines.append(f"💡 다음 세션 목표: NCO {80 - pct}% 더 사용해야 80% 달성")
-    lines.append("   우선 위임: /nco-task codex | /nco-team | /nco-parallel")
+    if pct < 80 and total >= 3:
+        lines.append("")
+        lines.append(f"💡 목표: NCO {80 - pct}% 더 사용 (new_feature 파이프라인)")
 
 print(json.dumps({"systemMessage": "\n".join(lines)}))
 PYEOF
