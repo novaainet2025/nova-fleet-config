@@ -70,6 +70,10 @@ except Exception:
 if cursor > start:
     start = cursor
 now       = int(time.time())
+# 최소 리포트 간격 30분 — 매 턴 미니리포트 반복 발화(노이즈) 방지 (사용자 지적 2026-07-06).
+# NCO_REPORT_FORCE=1 로 우회 가능(테스트·수동 재생성용).
+if cursor and (now - cursor) < 1800 and os.environ.get('NCO_REPORT_FORCE') != '1':
+    out()
 start_str = time.strftime('%Y-%m-%d %H:%M', time.localtime(start))
 now_str   = time.strftime('%Y-%m-%dT%H:%M', time.localtime(now))
 DATE      = time.strftime('%Y-%m-%d', time.localtime(now))
