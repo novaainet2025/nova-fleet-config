@@ -401,27 +401,32 @@ if ctx and carry:
 def _clip(s, n):
     return s.replace('\n',' ').strip()[:n]
 D = []
-D.append(f'📋 세션 종료 리포트 — {PROJNAME}  ({DATE} {time.strftime("%H:%M", time.localtime(now))})')
+D.append(f'📋 세션 종료 리포트 — {PROJNAME} · {DATE} {time.strftime("%H:%M", time.localtime(now))}')
 D.append('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-D.append(f'① 요약 · {summary} · {task_type}')
+D.append('▶ 요약')
+D.append(f'   {summary} · {task_type}')
 if edited:
     D.append(f'   편집: {", ".join(edited[:6])}')
-D.append(f'⑤ Gap · {gap_block.replace("**","")}')
-D.append('⑧ 자기개선(발견한 문제·원인):')
+D.append('')
+D.append('▶ Gap')
+D.append(f'   {gap_block.replace("**","")}')
+D.append('')
+D.append('▶ 자기개선 — 발견한 문제')
 for a, r in (lesson_pairs[-3:] or [('', '이번 구간(커서 이후) 신규 교훈 없음')]):
-    D.append(f'   • {_clip(r or a, 64)}')
-D.append('⑨ 자기학습(다음 세션 규칙):')
+    D.append(f'   · {_clip(r or a, 64)}')
+D.append('')
+D.append('▶ 자기학습 — 다음 세션 규칙')
 for x in learn[:3]:
-    D.append(f'   • {_clip(x, 70)}')
-D.append('⑥ 다음 단계:')
+    D.append(f'   · {_clip(x, 70)}')
+D.append('')
+D.append('▶ 다음 단계')
 if pending:
-    for i, p in enumerate(pending[:3]):
-        pri = 'High' if i < 2 else 'Med '
-        D.append(f'   • [{pri}] {_clip(p,58)}')
+    for p in pending[:3]:
+        D.append(f'   · [High] {_clip(p,58)}')
 else:
-    D.append('   • 신규 지시 대기')
+    D.append('   · [High] 신규 지시 대기')
 D.append('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-D.append(f'📄 전문(②변화·③완료·④미완료·⑦목표 포함): {note_file}')
+D.append(f'📄 전문: {note_file}')
 out('\n'.join(D))
 PYEOF
 exit 0
