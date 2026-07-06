@@ -65,6 +65,16 @@ else:
     # 구 포맷 fallback
     print(text[:400])
 " "$CONTEXT_NOTE" 2>/dev/null | head -c 500)
+  CTX_NEXT_SESSION=$(python3 -c "
+import re, sys
+text = open(sys.argv[1], encoding='utf-8', errors='replace').read()
+m = re.search(r'^## 5\\. 다음 세션 필수 인지\\s*$\\n(.*?)(?=^##\\s|\\Z)', text, re.MULTILINE | re.DOTALL)
+if m:
+    print(('## 5. 다음 세션 필수 인지\\n' + m.group(1).strip())[:400])
+" "$CONTEXT_NOTE" 2>/dev/null | sed '/^[[:space:]]*$/d' | head -c 400)
+  if [ -n "$CTX_NEXT_SESSION" ]; then
+    CTX_SUMMARY="${CTX_SUMMARY}"$'\n'"${CTX_NEXT_SESSION}"
+  fi
 fi
 
 # ── 최신 개선 노트 권장사항 ──────────────────────────────────
@@ -74,8 +84,16 @@ if [ -d "$IMPROVEMENTS_DIR" ]; then
   PREV_FILE=$(ls -t "${IMPROVEMENTS_DIR}/${PROJECT_NAME}-"*.md 2>/dev/null | grep -v INDEX | head -1)
   if [ -n "$PREV_FILE" ]; then
     PREV_NOTE_DATE=$(basename "$PREV_FILE" | sed "s/${PROJECT_NAME}-//" | sed 's/\.md//')
-    PREV_IMPROVEMENTS=$(awk '/권장 개선사항/{found=1;next} found&&/^###/{exit} found{print}' "$PREV_FILE" \
-      | sed '/^[[:space:]]*$/d' | head -c 400)
+    PREV_IMPROVEMENTS=$(awk '
+      /^## ⑨/ {found=1; next}
+      /^## ⑥/ {found=1; next}
+      found && /^## / {exit}
+      found {print}
+    ' "$PREV_FILE" | sed '/^[[:space:]]*$/d' | head -c 400)
+    if [ -z "$PREV_IMPROVEMENTS" ]; then
+      PREV_IMPROVEMENTS=$(awk '/권장 개선사항/{found=1;next} found&&/^###/{exit} found{print}' "$PREV_FILE" \
+        | sed '/^[[:space:]]*$/d' | head -c 400)
+    fi
   fi
 fi
 

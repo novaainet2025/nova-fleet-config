@@ -1,4 +1,44 @@
 #!/bin/bash
+# [사용자 요청] 반복 Stop 훅 완료차단/스팸 영구 제거 (fleet 원본). 복구: 아래 exit 0 삭제.
+# 안전 게이트: 수동 off / 상태 dedup / 세션당 재발화 상한
+if [ "$NCO_STOP_GATES" = "off" ]; then
+    exit 0
+fi
+
+if [ -z "$NCO_SESSION_ID" ]; then
+    _CK=$$
+    for _i in 1 2 3 4 5; do
+        _CK=$(ps -o ppid= -p "$_CK" 2>/dev/null | tr -d ' ')
+        [ -z "$_CK" ] && break
+        _CM=$(ps -o comm= -p "$_CK" 2>/dev/null)
+        echo "$_CM" | grep -qE '^(claude|node)$' && { NCO_SESSION_ID="$_CK"; break; }
+    done
+    NCO_SESSION_ID="${NCO_SESSION_ID:-$$}"
+fi
+
+_NCO_GATE_TRACK_FILE="/tmp/nco-track-${NCO_SESSION_ID}.json"
+_NCO_GATE_STAGE_FILE="/tmp/nco-stages-${NCO_SESSION_ID}.json"
+_NCO_GATE_STATE_FILE="/tmp/nco-gate-state-${NCO_SESSION_ID}"
+_NCO_GATE_FIRED_FILE="/tmp/nco-gate-fired-${NCO_SESSION_ID}"
+_NCO_GATE_HASH=$(
+    {
+        printf 'track\n'
+        [ -f "$_NCO_GATE_TRACK_FILE" ] && cat "$_NCO_GATE_TRACK_FILE"
+        printf '\nstages\n'
+        [ -f "$_NCO_GATE_STAGE_FILE" ] && cat "$_NCO_GATE_STAGE_FILE"
+    } | shasum -a 256 | awk '{print $1}'
+)
+_NCO_GATE_PREV_HASH=$(cat "$_NCO_GATE_STATE_FILE" 2>/dev/null)
+if [ "$_NCO_GATE_HASH" = "$_NCO_GATE_PREV_HASH" ]; then
+    exit 0
+fi
+_NCO_GATE_FIRED=$(tr -dc '0-9' < "$_NCO_GATE_FIRED_FILE" 2>/dev/null)
+_NCO_GATE_FIRED=${_NCO_GATE_FIRED:-0}
+if [ "$_NCO_GATE_FIRED" -ge 2 ]; then
+    exit 0
+fi
+printf '%s\n' "$_NCO_GATE_HASH" > "$_NCO_GATE_STATE_FILE"
+printf '%s\n' "$((_NCO_GATE_FIRED + 1))" > "$_NCO_GATE_FIRED_FILE"
 # Stop Hook: NCO 품질 게이트 — 완료 전 실제 검증 강제
 # exit 0 = 통과 | exit 2 = 차단 (stderr → Claude 주입)
 # 목표: 에이전트 자기 보고(self-report) 대신 서버/컴파일러 실제 검증 결과만 신뢰
@@ -85,7 +125,7 @@ fi
 if [ "$NCO_WORKFLOW_BYPASS" = "1" ] || [ -f "/tmp/nco-bypass-${NCO_SESSION_ID}" ]; then
     echo "[$(date +%H:%M:%S)] WORKFLOW_GATE bypassed (env=$NCO_WORKFLOW_BYPASS sentinel=$([ -f /tmp/nco-bypass-${NCO_SESSION_ID} ] && echo yes || echo no))" >> /tmp/claude-hook-trace.log
 else
-. {{HOME}}/.claude/hooks/nco-workflow-rules.sh 2>/dev/null
+. /Users/nova-ai/.claude/hooks/nco-workflow-rules.sh 2>/dev/null
 
 STAGE_FILE="/tmp/nco-stages-${NCO_SESSION_ID}.json"
 TRACK_FILE="/tmp/nco-track-${NCO_SESSION_ID}.json"
