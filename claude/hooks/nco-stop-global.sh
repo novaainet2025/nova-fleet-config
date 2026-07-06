@@ -228,6 +228,8 @@ d = {}
 if os.path.exists(f):
     try: d = json.load(open(f))
     except: pass
+d['nco_calls_total'] = d.get('nco_calls_total', 0) + d.get('nco_calls', 0)
+d['direct_edits_total'] = d.get('direct_edits_total', 0) + d.get('direct_edits', 0)
 d['direct_edits'] = 0
 d['nco_calls'] = 0
 d['warned'] = 0

@@ -92,8 +92,8 @@ def load_json(p):
 
 tr        = load_json(TRACK)
 stages    = load_json(STAGEP)
-nco_calls = int(tr.get('nco_calls', 0) or 0)
-direct    = int(tr.get('direct_edits', 0) or 0)
+nco_calls = int(tr.get('nco_calls_total', 0) or 0) + int(tr.get('nco_calls', 0) or 0)
+direct    = int(tr.get('direct_edits_total', 0) or 0) + int(tr.get('direct_edits', 0) or 0)
 task_type = tr.get('task_type_max') or tr.get('task_type') or 'unknown'
 viol      = int(tr.get('agent_violations', 0) or 0)
 
