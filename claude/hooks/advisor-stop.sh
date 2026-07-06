@@ -41,6 +41,8 @@ IMPROVE   = os.environ['NCO_IMPROVE_DIR']
 HOME      = os.path.expanduser('~')
 TRACK     = f'/tmp/nco-track-{SID}.json'
 STAGEP    = f'/tmp/nco-stages-{SID}.json'
+PROJNAME  = os.path.basename(PROJECT)
+CURSOR    = f'{IMPROVE}/.report-cursor-{PROJNAME}'
 
 def out(msg=None):
     if msg:
@@ -61,12 +63,17 @@ def birth(p):
 start = birth(TRACK)
 if not start:
     start = int(time.time()) - 3*3600   # 폴백: 3시간 창
+try:
+    cursor = int(open(CURSOR, encoding='utf-8').read().strip() or '0')
+except Exception:
+    cursor = 0
+if cursor > start:
+    start = cursor
 now       = int(time.time())
 start_str = time.strftime('%Y-%m-%d %H:%M', time.localtime(start))
 now_str   = time.strftime('%Y-%m-%dT%H:%M', time.localtime(now))
 DATE      = time.strftime('%Y-%m-%d', time.localtime(now))
 TIMEHM    = time.strftime('%H%M', time.localtime(now))
-PROJNAME  = os.path.basename(PROJECT)
 
 def load_json(p):
     try: return json.load(open(p))
@@ -318,15 +325,15 @@ L.append('')
 # ⑧ 자기 개선 (이번 발견한 문제/원인 = reason 컬럼)
 L.append('## ⑧ 🔧 자기 개선 (이번 발견한 문제·원인)')
 if lesson_pairs:
-    L.append(bullets([f'{(r or a)[:120]}  _(조치: {a[:50]})_' for a, r in lesson_pairs], n=5))
+    L.append(bullets([f'{(r or a)[:120]}  _(조치: {a[:50]})_' for a, r in lesson_pairs[-5:]], n=5))
 else:
-    L.append('- 이번 세션 decision-log에서 자동 추출된 개선 교훈 없음 (경미/정상 세션)')
+    L.append('- 이번 구간(커서 이후) 신규 교훈 없음')
 L.append('')
 
 # ⑨ 자기 학습 (다음 세션 적용할 규칙 = action 기반, ⑧과 구분)
 L.append('## ⑨ 📚 자기 학습 (다음 세션 적용 규칙)')
 learn = []
-for a, r in lesson_pairs[:3]:
+for a, r in lesson_pairs[-3:]:
     learn.append(f'{a[:52]} → 재발방지 규칙화')
 if not learn:
     if viol:
@@ -344,6 +351,7 @@ REVIEW = '\n'.join(L)
 note_file = f'{IMPROVE}/{PROJNAME}-{DATE}-{TIMEHM}.md'
 try:
     open(note_file, 'w', encoding='utf-8').write(REVIEW + '\n')
+    open(CURSOR, 'w', encoding='utf-8').write(str(now) + '\n')
 except Exception as e:
     out(f'[개선노트 저장실패: {e}]')
 
@@ -373,7 +381,7 @@ for cand in [os.path.join(PROJECT,'context_note.md'), f'{HOME}/projects/context_
     if os.path.exists(cand):
         ctx = cand; break
 carry = []
-for a, r in lesson_pairs[:2]:
+for a, r in lesson_pairs[-2:]:
     carry.append(f'- [학습] {a[:110]}')
 for p in pending[:2]:
     carry.append(f'- [다음] {p[:110]}')
@@ -400,7 +408,7 @@ if edited:
     D.append(f'   편집: {", ".join(edited[:6])}')
 D.append(f'⑤ Gap · {gap_block.replace("**","")}')
 D.append('⑧ 자기개선(발견한 문제·원인):')
-for a, r in (lesson_pairs[:3] or [('', '추출된 교훈 없음 (경미/정상 세션)')]):
+for a, r in (lesson_pairs[-3:] or [('', '이번 구간(커서 이후) 신규 교훈 없음')]):
     D.append(f'   • {_clip(r or a, 64)}')
 D.append('⑨ 자기학습(다음 세션 규칙):')
 for x in learn[:3]:
