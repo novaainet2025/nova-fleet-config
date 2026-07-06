@@ -58,7 +58,7 @@ try:
 except: print('')
 " 2>/dev/null)
         # localhost:6200/api/* 직접 호출 OR delegate.py 래퍼(내부에서 /api/task 위임) OR nco-supervisor 위임
-        echo "$CMD" | grep -qE 'localhost:6200/api/(task|parallel|commander|conductor|mesh/send|agent)|delegate\.py' || exit 0
+        echo "$CMD" | grep -qE 'localhost:6200/api/(task|parallel|commander|conductor|mesh/send|agent|discussion|collab|consensus)|delegate\.py' || exit 0
         ;;
 
     # 4) Agent 도구 — NCO가 아님! Explore/Plan만 허용, 나머지는 위반 기록
@@ -130,6 +130,7 @@ except: print('')
 esac
 
 # NCO 사용 카운터 증가 + warned 초기화 + stage 마킹
+export NCO_TRACK_CMD="${CMD:0:2000}"
 python3 -c "
 import json, os
 
@@ -181,6 +182,15 @@ if tool in discussion_tools: stages['discussion'] = True
 if tool in design_tools:     stages['design'] = True
 if tool in impl_tools:       stages['implementation'] = True
 if tool in gap_tools:        stages['gap_analysis'] = True
+
+# 의도(프롬프트/URL) 기반 스테이지 마킹 — 에이전트 무관 (2026-07-07: codex 리뷰도 review로)
+cmd_env = os.environ.get('NCO_TRACK_CMD', '')
+if 'api/discussion' in cmd_env or 'api/consensus' in cmd_env:
+    stages['discussion'] = True
+if '리뷰' in cmd_env or 'review' in cmd_env.lower():
+    stages['review'] = True
+if 'Gap 분석' in cmd_env or 'gap analysis' in cmd_env.lower() or '커버율' in cmd_env:
+    stages['gap_analysis'] = True
 
 # nco-task 에이전트 기반 review/verification 단계 마킹 (env 변수 사용)
 task_agent = os.environ.get('NCO_TASK_AGENT', '').lower().replace('-', '_')
