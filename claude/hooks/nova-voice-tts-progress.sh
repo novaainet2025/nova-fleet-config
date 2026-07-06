@@ -4,6 +4,9 @@ SETTINGS_FILE="$HOME/Library/Application Support/nova-voice/nova-settings.json"
 DEBOUNCE_FILE="/tmp/nova-tts-progress-ts"
 LOG="/tmp/nova-tts-hook.log"
 
+# nova-voice PTY 세션 전용 게이트 — 앱이 심는 NOVA_VOICE_SESSION=1 없으면 무음
+[ "${NOVA_VOICE_SESSION:-}" != "1" ] && exit 0
+
 NOW=$(date +%s)
 LAST=$(cat "$DEBOUNCE_FILE" 2>/dev/null || echo 0)
 [ $(( NOW - LAST )) -lt 4 ] && exit 0

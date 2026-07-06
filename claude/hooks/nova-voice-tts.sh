@@ -5,6 +5,12 @@
 SETTINGS_FILE="$HOME/Library/Application Support/nova-voice/nova-settings.json"
 LOG="/tmp/nova-tts-hook.log"
 
+# nova-voice PTY 세션 전용 게이트 — 앱이 심는 NOVA_VOICE_SESSION=1 없으면 무음
+if [ "${NOVA_VOICE_SESSION:-}" != "1" ]; then
+    echo "[$(date +%H:%M:%S)] skip: nova-voice 세션 아님 (NOVA_VOICE_SESSION 미설정)" >> "$LOG"
+    exit 0
+fi
+
 TTS_CONFIG=$(python3 -c "
 import json
 QWEN3_MAP={'Ryan':'ryan','Chelsie':'sohee','Vivian':'vivian','Aiden':'aiden',
