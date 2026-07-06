@@ -66,6 +66,12 @@
             "command": "bash {{HOME}}/.claude/hooks/mesh-plugin-guard.sh",
             "timeout": 5,
             "statusMessage": "Mesh plugin guard check..."
+          },
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/statusline-limit-guard.sh",
+            "timeout": 5,
+            "statusMessage": "Statusline limit guard check..."
           }
         ]
       },
@@ -250,6 +256,15 @@
       {
         "matcher": "",
         "hooks": []
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/canonical-drift-check.sh"
+          }
+        ]
       }
     ],
     "PostToolUse": [
