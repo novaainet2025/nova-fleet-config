@@ -175,15 +175,23 @@ print(json.dumps(result, ensure_ascii=False))
 PYEOF
 }
 
-# ── flush-settle 재시도 (2026-07-03): Stop 훅이 마지막 텍스트블록(영수증) flush 전에
-# 읽으면 has_receipt 거짓음성 → 잠깐 기다렸다 재분석해 정상 영수증 오차단 방지. ──
+# ── flush-settle 재시도 (2026-07-03, 2026-07-06 근본수정): Stop 훅이 마지막 텍스트블록
+# (영수증) flush 전에 읽으면 거짓음성 → 잠깐 기다렸다 재분석해 정상 영수증 오차단 방지.
+# [2026-07-06] 버그: 기존엔 has_receipt=1이면 즉시 break → 헤더줄만 flush되고 필드줄
+#   ([변경]/[검증방법]/[Gap])이 아직 미flush면 receipt_fields_ok=0인 채 종료 → G2가
+#   "필드 일부 누락"으로 오차단. settle이 필드 정착(receipt_fields_ok)까지 대기하도록 수정.
+#   (T1 확인: 차단시점 header만 존재, 시간경과 후 재분석 시 fields_ok=True). ──
 ANALYSIS=$(run_analysis)
 _settle=0
-while [ "$_settle" -lt 6 ]; do
+while [ "$_settle" -lt 10 ]; do
     _hr=$(echo "$ANALYSIS" | python3 -c "import json,sys;print(1 if json.load(sys.stdin).get('has_receipt') else 0)" 2>/dev/null || echo 1)
+    _rok=$(echo "$ANALYSIS" | python3 -c "import json,sys;print(1 if json.load(sys.stdin).get('receipt_fields_ok') else 0)" 2>/dev/null || echo 1)
     _ed=$(echo "$ANALYSIS" | python3 -c "import json,sys;print(json.load(sys.stdin).get('edits',0))" 2>/dev/null || echo 0)
     _cw=$(echo "$ANALYSIS" | python3 -c "import json,sys;print(len(json.load(sys.stdin).get('completion_words',[])))" 2>/dev/null || echo 0)
-    if [ "$_hr" = "1" ] || { [ "$_ed" -eq 0 ] && [ "$_cw" -eq 0 ]; }; then break; fi
+    # 강제 대상 아님(수정·완료어 없음) → 대기 불필요
+    if [ "$_ed" -eq 0 ] && [ "$_cw" -eq 0 ]; then break; fi
+    # 영수증 완전 정착(헤더+필드 모두) → 종료. 헤더만 있고 필드 미정착이면 flush 레이스이므로 계속 대기.
+    if [ "$_hr" = "1" ] && [ "$_rok" = "1" ]; then break; fi
     sleep 0.15
     ANALYSIS=$(run_analysis)
     _settle=$((_settle + 1))
