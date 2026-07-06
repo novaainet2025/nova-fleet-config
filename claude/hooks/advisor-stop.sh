@@ -1,279 +1,395 @@
 #!/bin/bash
-# Stop hook — 세션 종료 시 개선 노트 생성 (before/after 포함)
-# NCO 프로바이더(Ollama) 사용 — Claude API 토큰 금지
+# Stop hook — 세션 종료 시 결정론적 9섹션 PDCA 리포트 생성 (LLM 비의존)
 #
-# [통일된 위치]
-#   - ~/.claude/improvements/{project}-{date}-{time}.md
-#   - docs/improvements/{project}-{date}-{time}.md (프로젝트 내)
+# 설계 원칙 (사용자 지시 2026-07-06):
+#   - "매번 같은 내용" 금지 → 모든 소스를 세션-스코프(track birth-time 앵커)로 추출.
+#     변화는 구조적으로 보장(우연히 다르길 바라지 않음).
+#   - 하드코딩/"AI 오프라인" 폴백 금지 → 실제 작업 데이터(멀티레포 git·track·decision-log
+#     ·backlog·PRD)에서 결정론적으로 채운다. 데이터 없으면 "측정불가"로 명시.
+#   - Gap(⑤)은 track-stages done/total. 지표 없으면 측정불가. (반복 강제는 end-of-turn-check.sh)
+#   - ⑧⑨(자기개선·학습)은 기존 context_note "## 5. 다음 세션 필수 인지" 주입을 확장해 다음 세션 적용.
+#
+# 저장: ~/.claude/improvements/{project}-{date}-{time}.md
+set +e
 
-NOTE_GENERATOR="/Users/nova-ai/projects/security-kb/note-generator.sh"
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
-PROJECT_NAME=$(basename "$PROJECT_DIR")
-DATETIME=$(date +%Y-%m-%dT%H:%M)
-DATE=$(date +%Y-%m-%d)
-TIME=$(date +%H%M)
 IMPROVEMENTS_DIR="$HOME/.claude/improvements"
+mkdir -p "$IMPROVEMENTS_DIR" 2>/dev/null
 
-cd "$PROJECT_DIR" 2>/dev/null || cd "$HOME/projects" 2>/dev/null
-
-# ── 의미있는 작업 판단 ────────────────────────────────────────────
-# 기준 (OR 조건): 최근 1시간 커밋 2개+ | 편집 3회+ | NCO 1회+ AND 편집 1회+
-# 단순 Q&A·인사 세션은 스킵 (커밋 전/후 모두 올바르게 감지)
-
-_NCO_SESSION_ID="${NCO_SESSION_ID:-}"
-if [ -z "$_NCO_SESSION_ID" ]; then
+# ── 세션 ID 해석 (SID = track 파일 스코프 앵커) ──────────────────
+_SID="${NCO_SESSION_ID:-}"
+if [ -z "$_SID" ]; then
   _CK=$$
-  for _i in 1 2 3; do
+  for _i in 1 2 3 4 5; do
     _CK=$(ps -o ppid= -p "$_CK" 2>/dev/null | tr -d ' ')
     [ -z "$_CK" ] && break
-    ps -o comm= -p "$_CK" 2>/dev/null | grep -qE '^(claude|node)$' && { _NCO_SESSION_ID="$_CK"; break; }
+    ps -o comm= -p "$_CK" 2>/dev/null | grep -qE '^(claude|node)$' && { _SID="$_CK"; break; }
   done
-fi
-_TRACK="/tmp/nco-track-${_NCO_SESSION_ID}.json"
-_DIRECT_EDITS=0; _NCO_CALLS=0
-if [ -f "$_TRACK" ]; then
-  _vals=$(python3 -c "import json; d=json.load(open('$_TRACK')); print(d.get('direct_edits',0), d.get('nco_calls',0))" 2>/dev/null || echo "0 0")
-  read -r _DIRECT_EDITS _NCO_CALLS <<< "$_vals"
-fi
-_RECENT_COMMITS=$(git log --since='1 hour ago' --oneline 2>/dev/null | wc -l | tr -d ' ')
-_UNSTAGED=$(git diff --name-only 2>/dev/null | wc -l | tr -d ' ')
-
-_MEANINGFUL=0
-[ "${_RECENT_COMMITS:-0}" -ge 2 ] && _MEANINGFUL=1
-[ "${_DIRECT_EDITS:-0}" -ge 3 ] && _MEANINGFUL=1
-[ "${_NCO_CALLS:-0}" -ge 1 ] && [ "${_DIRECT_EDITS:-0}" -ge 1 ] && _MEANINGFUL=1
-[ "${_UNSTAGED:-0}" -ge 3 ] && _MEANINGFUL=1
-
-[ "$_MEANINGFUL" -eq 0 ] && exit 0
-
-# ── git 컨텍스트 수집 ────────────────────────────────────────────
-GIT_DIFF_STAT=$(git diff --stat HEAD 2>/dev/null | tail -8 || echo "변경 없음")
-LAST_COMMITS=$(git log -5 --pretty=format:"- %s (%h, %ad)" --date=short 2>/dev/null || echo "없음")
-CHANGED_FILES=$(git diff --name-only HEAD 2>/dev/null | head -15)
-STAGED_FILES=$(git diff --cached --name-only 2>/dev/null | head -10)
-BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
-
-# ── 이전 개선 노트 읽기 (before 추출 + 중복 감지) ──────────────
-PREV_FILE=$(ls -t "${IMPROVEMENTS_DIR}/${PROJECT_NAME}-"*.md 2>/dev/null | grep -v INDEX | head -1)
-PREV_PENDING=""
-PREV_DATE=""
-PREV_COMMITS=""
-if [ -n "$PREV_FILE" ]; then
-    PREV_PENDING=$(awk '/미완성|미작업/{found=1; next} found && /^###/{exit} found{print}' "$PREV_FILE" 2>/dev/null | head -c 600 || true)
-    PREV_DATE=$(basename "$PREV_FILE" | sed "s/${PROJECT_NAME}-//" | sed 's/\.md//')
-    # 이전 노트의 커밋 목록 추출 (중복 감지용)
-    PREV_COMMITS=$(grep -oE '[a-f0-9]{7,}\b' "$PREV_FILE" 2>/dev/null | sort | tr '\n' ' ')
+  _SID="${_SID:-$$}"
 fi
 
-# 중복 감지: 현재 세션 커밋이 이전 노트와 완전히 동일하면 스킵
-_CUR_COMMITS=$(echo "$LAST_COMMITS" | grep -oE '[a-f0-9]{7,}\b' | sort | tr '\n' ' ')
-# PREV_COMMITS가 비어 있어도 헤더의 "커밋:" 줄에서 재추출 시도
-if [ -z "$PREV_COMMITS" ] && [ -n "$PREV_FILE" ]; then
-    PREV_COMMITS=$(grep '^> 커밋:' "$PREV_FILE" 2>/dev/null | sed 's/^> 커밋: *//')
-fi
-if [ -n "$PREV_COMMITS" ] && [ -n "$_CUR_COMMITS" ] && [ "$PREV_COMMITS" = "$_CUR_COMMITS" ]; then
-    exit 0  # 동일한 커밋셋 → 중복 노트 생성 안 함
-fi
+export NCO_SID="$_SID"
+export NCO_PROJECT_DIR="$PROJECT_DIR"
+export NCO_IMPROVE_DIR="$IMPROVEMENTS_DIR"
 
-PROMPT="당신은 시니어 코드 리뷰어 겸 아키텍트입니다. 아래 세션 정보를 바탕으로 개선 노트를 작성하세요.
+python3 <<'PYEOF'
+import os, sys, json, subprocess, time, hashlib, re
 
-프로젝트: ${PROJECT_NAME} | 브랜치: ${BRANCH} | 시각: ${DATETIME}
+SID       = os.environ.get('NCO_SID','')
+PROJECT   = os.environ['NCO_PROJECT_DIR']
+IMPROVE   = os.environ['NCO_IMPROVE_DIR']
+HOME      = os.path.expanduser('~')
+TRACK     = f'/tmp/nco-track-{SID}.json'
+STAGEP    = f'/tmp/nco-stages-{SID}.json'
 
-[변경된 파일]
-${CHANGED_FILES}
-${STAGED_FILES}
+def out(msg=None):
+    if msg:
+        print(json.dumps({'systemMessage': msg}))
+    sys.exit(0)
 
-[최근 커밋 5개]
-${LAST_COMMITS}
+# ── 세션 시작 앵커 = track 파일 birth-time (macOS: stat -f %B) ──────
+def birth(p):
+    for flag in ('%B','%m'):
+        try:
+            r = subprocess.run(['stat','-f',flag,p], capture_output=True, text=True, timeout=5)
+            if r.returncode == 0 and r.stdout.strip().isdigit():
+                return int(r.stdout.strip())
+        except Exception:
+            pass
+    return None
 
-[변경 통계]
-${GIT_DIFF_STAT}
+start = birth(TRACK)
+if not start:
+    start = int(time.time()) - 3*3600   # 폴백: 3시간 창
+now       = int(time.time())
+start_str = time.strftime('%Y-%m-%d %H:%M', time.localtime(start))
+now_str   = time.strftime('%Y-%m-%dT%H:%M', time.localtime(now))
+DATE      = time.strftime('%Y-%m-%d', time.localtime(now))
+TIMEHM    = time.strftime('%H%M', time.localtime(now))
+PROJNAME  = os.path.basename(PROJECT)
 
-[이전 세션 미완료 항목 — Before]
-${PREV_PENDING:-없음}
+def load_json(p):
+    try: return json.load(open(p))
+    except Exception: return {}
 
-## 출력 형식 (마크다운)
+tr        = load_json(TRACK)
+stages    = load_json(STAGEP)
+nco_calls = int(tr.get('nco_calls', 0) or 0)
+direct    = int(tr.get('direct_edits', 0) or 0)
+task_type = tr.get('task_type', 'unknown')
+viol      = int(tr.get('agent_violations', 0) or 0)
 
-### ✅ 이번 작업 요약
-(한 줄)
+# ── 멀티레포 git: 세션 시작 이후 커밋 + 세션 중 수정된 dirty 파일 ──
+REPOS = []
+for r in [os.path.join(PROJECT,'nco'), f'{HOME}/nova-fleet-config', f'{HOME}/.claude', PROJECT]:
+    if r not in REPOS:
+        REPOS.append(r)
 
-### 🔄 Before → After (이번 세션에서 개선된 사항)
-| 이전 문제 | 이번 해결 | 파일/코드 |
-|-----------|-----------|-----------|
-| ...       | ...       | ...       |
+def git(repo, *args):
+    try:
+        r = subprocess.run(['git','-C',repo]+list(args), capture_output=True, text=True, timeout=10)
+        return r.stdout if r.returncode == 0 else ''
+    except Exception:
+        return ''
 
-### 🚧 미완성·미작업 항목
-- (구체적 파일/기능명 포함)
+def is_repo(repo):
+    return bool(git(repo,'rev-parse','--git-dir').strip())
 
-### 🔒 보안 검토
-- (취약점, 인증, 입력검증 등)
+commits = []   # (repo, "hash subject")
+changed = []   # (repo, path)
+for repo in REPOS:
+    if not is_repo(repo):
+        continue
+    rn = os.path.basename(repo) or repo
+    for ln in git(repo,'log',f'--since=@{start}','--pretty=format:%h %s').splitlines():
+        if ln.strip():
+            commits.append((rn, ln.strip()))
+    for ln in git(repo,'diff','--name-only').splitlines():
+        ln = ln.strip()
+        if not ln: continue
+        fp = os.path.join(repo, ln)
+        try:
+            if os.path.getmtime(fp) >= start:
+                changed.append((rn, ln))
+        except Exception:
+            pass
 
-### ⚡ 최적화 가능 항목
-- (성능, 불필요한 연산, 캐싱 기회 등)
+# ── 비-git 편집 스캔 (hooks / .nco-supervisor) — mtime >= 세션 시작 ──
+touched = []
+SKIP_DIRS = {'.git','checkpoints','filebak','node_modules','__pycache__'}
+for base in [f'{HOME}/.claude/hooks', os.path.join(PROJECT,'.nco-supervisor')]:
+    if not os.path.isdir(base): continue
+    for root, dirs, files in os.walk(base):
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+        for fn in files:
+            fp = os.path.join(root, fn)
+            try:
+                if os.path.getmtime(fp) >= start and os.path.getsize(fp) > 0:
+                    touched.append(os.path.relpath(fp, HOME))
+            except Exception:
+                pass
+touched = sorted(set(touched))[:12]
 
-### 🏗️ 아키텍처·설계 개선
-- (구조적 문제, 책임 분리 등)
+# ── decision-log 세션-스코프 추출 (③완료 핵심 + ⑧⑨ 교훈) ──────────
+DLOG = os.path.join(PROJECT, '.nco-supervisor', 'decision-log.md')
+dl_entries = []   # (ts, desc)
+if os.path.exists(DLOG):
+    try:
+        for ln in open(DLOG, encoding='utf-8'):
+            m = re.match(r'\|\s*(~)?\s*(\d{4}-\d{2}-\d{2})?\s*(\d{1,2}):(\d{2})\s*\|\s*([^|]+)\|', ln)
+            if not m: continue
+            _, date, hh, mm, desc = m.groups()
+            if not date:   # 날짜 없는 구(舊) 엔트리 → 스킵
+                continue
+            ts = f'{date} {int(hh):02d}:{mm}'
+            if ts >= start_str:
+                dl_entries.append((ts, re.sub(r'\*+','',desc).strip()))
+    except Exception:
+        pass
 
-### ⚠️ 비평·비판
-- (솔직하게 — 무엇이 잘못되었는가)
+# ── backlog 미완료(⑥) ────────────────────────────────────────────
+BACKLOG = os.path.join(PROJECT, '.nco-supervisor', 'backlog.md')
+pending = []
+if os.path.exists(BACKLOG):
+    try:
+        for ln in open(BACKLOG, encoding='utf-8'):
+            s = ln.strip()
+            if s.startswith('- [ ]') or s.startswith('- [~]'):
+                pending.append(s[5:].strip())
+    except Exception:
+        pass
 
-### 💡 다음 세션 권장 개선사항 (우선순위순)
-각 항목에 반드시 [High], [Medium], [Low] 중 하나의 태그를 붙일 것.
-1. [High] ...
-2. [Medium] ...
-3. [Low] ...
+# ── PRD 목표(⑦) ──────────────────────────────────────────────────
+PRD = os.path.join(PROJECT, '.nco-supervisor', 'nco-a-plus-prd.md')
+goal_line = ''
+if os.path.exists(PRD):
+    try:
+        txt = open(PRD, encoding='utf-8').read()
+        gm = re.search(r'##\s*목표.*?\n(.*?)(?=\n##|\Z)', txt, re.DOTALL)
+        if gm:
+            for ln in gm.group(1).splitlines():
+                ln = ln.strip()
+                if ln and not ln.startswith('#'):
+                    goal_line = re.sub(r'\*+','',ln).lstrip('- ').strip()
+                    break
+    except Exception:
+        pass
 
-### 📊 품질 평가
-점수: X/10 | 이유: (한 줄)"
+# ── 의미있는 세션 게이트 (멀티소스) ────────────────────────────────
+meaningful = (nco_calls >= 1 or direct >= 3 or len(commits) >= 1
+              or len(changed) >= 3 or len(dl_entries) >= 1 or len(touched) >= 3)
+if not meaningful:
+    out()
 
-# ── NCO 프로바이더(Ollama)로 생성 — 3-tier 폴백 ─────────────────
-# Tier 1: note-generator.sh (존재 시)
-# Tier 2: 직접 Ollama API (:11434)
-# Tier 3: MLX 프록시 (:4100)
-REVIEW=""
-if [ -f "$NOTE_GENERATOR" ]; then
-    REVIEW=$(bash "$NOTE_GENERATOR" "$PROMPT" 800 2>/dev/null)
-fi
+# ── 중복 방지 키 (세션-스코프 소스 조합) ───────────────────────────
+stage_keys = ['discussion','design','implementation','review','gap_analysis','verification']
+done_stages = [k for k in stage_keys if stages.get(k)]
+key_src = json.dumps([
+    sorted(c[1] for c in commits),
+    sorted(f'{r}/{p}' for r,p in changed),
+    [t for t,_ in dl_entries],
+    touched,
+    done_stages,
+], ensure_ascii=False)
+DEDUP_KEY = hashlib.md5(key_src.encode('utf-8')).hexdigest()
 
-# Tier 2: 직접 Ollama API — qwen3:32b 또는 사용 가능한 첫 모델
-if [ -z "$REVIEW" ]; then
-    _OLLAMA_MODEL=$(curl -s http://localhost:11434/api/tags 2>/dev/null \
-        | python3 -c "
-import sys,json
-d=json.load(sys.stdin)
-ms=[m['name'] for m in d.get('models',[]) if 'embed' not in m['name'].lower()]
-for pref in ['qwen3','llama3','gemma']:
-    for m in ms:
-        if pref in m.lower(): print(m); sys.exit()
-if ms: print(ms[0])
-" 2>/dev/null)
-    if [ -n "$_OLLAMA_MODEL" ]; then
-        REVIEW=$(curl -s -m 120 http://localhost:11434/api/generate \
-            -H "Content-Type: application/json" \
-            -d "$(python3 -c "import json,sys; print(json.dumps({'model': sys.argv[1], 'prompt': sys.argv[2], 'stream': False, 'options': {'num_predict': 800}}))" \
-                "$_OLLAMA_MODEL" "$PROMPT")" 2>/dev/null \
-            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('response',''))" 2>/dev/null)
-    fi
-fi
+# 이전 노트 로드 (dedup + Before 참조)
+import glob as _glob
+prev_files = sorted([f for f in _glob.glob(f'{IMPROVE}/{PROJNAME}-*.md') if 'INDEX' not in f],
+                    key=lambda p: os.path.getmtime(p), reverse=True)
+prev_file = prev_files[0] if prev_files else None
+prev_date = ''
+if prev_file:
+    try:
+        head = open(prev_file, encoding='utf-8').read(400)
+        km = re.search(r'> key:\s*([0-9a-f]{32})', head)
+        if km and km.group(1) == DEDUP_KEY:
+            out()   # 동일 세션-상태 → 재생성 안 함
+        dm = re.search(r'> 생성:\s*(\S+)', head)
+        if dm: prev_date = dm.group(1)
+    except Exception:
+        pass
 
-# Tier 3: MLX 프록시 (:4100)
-if [ -z "$REVIEW" ]; then
-    REVIEW=$(curl -s -m 60 http://localhost:4100/v1/chat/completions \
-        -H "Content-Type: application/json" \
-        -d "$(python3 -c "import json,sys; print(json.dumps({'model':'local','messages':[{'role':'user','content':sys.argv[1]}],'max_tokens':800}))" \
-            "$PROMPT")" 2>/dev/null \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['choices'][0]['message']['content'])" 2>/dev/null)
-fi
+# ── Gap 분석(⑤) — track-stages done/total, 없으면 측정불가 ─────────
+if task_type == 'new_feature':
+    pct  = int(len(done_stages)/6*100)
+    gate = '통과 (≥95%)' if pct >= 95 else '미통과 (<95%) → 반복 필요 [end-of-turn-check 강제]'
+    gap_block = f'달성률 **{pct}%** ({len(done_stages)}/6 파이프라인 단계) · 기준 95% → **{gate}**'
+elif done_stages:
+    gap_block = f'**측정불가** (전체 파이프라인 미적용) · 이번 완료 단계: {", ".join(done_stages)}'
+else:
+    gap_block = '**측정불가** (파이프라인 스테이지 기록 없음 — 직접수정/조회/모니터링 세션)'
 
-# ── AI 실패 시 기본 노트 — git 데이터 기반 구조화 ─────────────────
-if [ -z "$REVIEW" ]; then
-    _CHANGED_LIST=$(echo "$CHANGED_FILES" | head -5 | sed 's/^/- /' | tr '\n' '|' | sed 's/|$//')
-    _COMMIT_CNT=$(echo "$LAST_COMMITS" | grep -c '^-' || echo 0)
-    REVIEW="### ✅ 이번 작업 요약
-AI 오프라인 — git 데이터 기반 자동 기록 (커밋 ${_COMMIT_CNT}건)
+# ── ⑧ 자기개선 · ⑨ 자기학습 — decision-log 교훈 결정론적 추출 ──────
+LESSON_KW = ['반성','정정','재발','오탐','회귀','누수','cry-wolf','오독','위반','근본원인','버그']
+lessons = [d for _, d in dl_entries if any(k in d for k in LESSON_KW)]
 
-### 🔄 Before → After
-| 이전 문제 | 이번 해결 | 파일/코드 |
-|-----------|-----------|-----------|
-$(echo "$LAST_COMMITS" | head -3 | sed 's/^- /| / ; s/$/ | - | - |/')
+# ── 9섹션 리포트 조립 ─────────────────────────────────────────────
+def bullets(items, empty='(없음)', n=8):
+    items = list(items)[:n]
+    return '\n'.join(f'- {x}' for x in items) if items else f'- {empty}'
 
-### 🚧 미완성·미작업 항목
-$(echo "$CHANGED_FILES" | head -5 | sed 's/^/- /')
+L = []
+L.append(f'# 작업 종료 리포트 — {PROJNAME}')
+L.append(f'> 생성: {now_str} · 세션창: {start_str} → {time.strftime("%H:%M", time.localtime(now))}')
+L.append(f'> 이전 노트: {prev_date or "없음"}')
+L.append(f'> key: {DEDUP_KEY}')
+L.append('')
 
-### 💡 다음 세션 권장 개선사항
-1. [High] Ollama 온라인 시 advisor-stop.sh 재실행으로 상세 분석
-2. [Medium] 변경 파일 $(echo "$CHANGED_FILES" | wc -l | tr -d ' ')개 코드 리뷰 진행
+# ① 요약
+did = []
+if commits:      did.append(f'커밋 {len(commits)}건')
+if changed:      did.append(f'수정파일 {len(changed)}건')
+if touched:      did.append(f'훅/스크립트 {len(touched)}건')
+if nco_calls:    did.append(f'NCO위임 {nco_calls}회')
+if dl_entries:   did.append(f'결정로그 {len(dl_entries)}건')
+summary = ' · '.join(did) if did else '경미한 활동'
+L.append('## ① 요약')
+L.append(f'이번 세션 실수행: {summary}. (task_type={task_type})')
+edited = sorted(set([os.path.basename(p) for _,p in changed] +
+                    [os.path.basename(t) for t in touched]))[:10]
+if edited:
+    L.append(f'편집 파일: {", ".join(edited)}')
+if dl_entries:
+    L.append(f'핵심: {dl_entries[-1][1][:120]}')
+L.append('')
 
-### 📊 품질 평가
-점수: -/10 | 이유: AI 오프라인 (Ollama/MLX 미응답)"
-fi
+# ② Before → After
+L.append('## ② Before → After (변화)')
+if commits or dl_entries:
+    L.append('| 이전 문제 / 목표 | 이번 조치 | 근거 |')
+    L.append('|---|---|---|')
+    rows = 0
+    for ts, d in dl_entries[-6:]:
+        cell = d.replace('|','/')[:80]
+        L.append(f'| (세션 전 상태) | {cell} | decision-log {ts} |')
+        rows += 1
+    for rn, c in commits[:4]:
+        L.append(f'| — | {c.split(" ",1)[-1][:70].replace("|","/")} | {rn} {c.split()[0]} |')
+        rows += 1
+    if rows == 0:
+        L.append('| — | 변화 없음(조회/분석 세션) | — |')
+else:
+    L.append('변화 없음 (조회/분석 세션)')
+L.append('')
 
-# ── [통일 위치 1] ~/.claude/improvements/ 저장 ─────────────────
-mkdir -p "$IMPROVEMENTS_DIR"
-NOTE_FILE="${IMPROVEMENTS_DIR}/${PROJECT_NAME}-${DATE}-${TIME}.md"
+# ③ 완료 (검증됨)
+L.append('## ③ ✅ 완료 (검증됨)')
+done_items = []
+for ts, d in dl_entries:
+    tier = 'T?'
+    tm = re.search(r'\bT([1-4])\b', d)
+    if tm: tier = 'T'+tm.group(1)
+    done_items.append(f'{d[:110]}  _[{ts} · {tier}]_')
+if not done_items and commits:
+    done_items = [f'{c}  _[{rn}]_' for rn, c in commits[:6]]
+L.append(bullets(done_items, '검증된 완료 항목 없음', n=10))
+L.append('')
 
-cat > "$NOTE_FILE" << NOTEOF
-# 개선 노트 — ${PROJECT_NAME}
-> 생성: ${DATETIME} | 브랜치: ${BRANCH}
-> 이전 노트: ${PREV_DATE:-없음}
-> 커밋: ${_CUR_COMMITS}
+# ④ 미완료·미작업
+L.append('## ④ 🚧 미완료·미작업')
+L.append(bullets(pending, '추적된 미완료 항목 없음', n=8))
+L.append('')
 
-${REVIEW}
-NOTEOF
+# ⑤ Gap 분석
+L.append('## ⑤ 📊 Gap 분석 (Check)')
+L.append(gap_block)
+L.append('')
 
-# ── [통일 위치 2] docs/improvements/ 저장 ───────────────────────
-if [ -d "${PROJECT_DIR}/docs" ] && [ -w "${PROJECT_DIR}/docs" ]; then
-    mkdir -p "${PROJECT_DIR}/docs/improvements"
-    cp "$NOTE_FILE" "${PROJECT_DIR}/docs/improvements/$(basename "$NOTE_FILE")"
-fi
+# ⑥ 다음 단계 가이드
+L.append('## ⑥ ➡️ 다음 단계 가이드')
+if pending:
+    for i, p in enumerate(pending[:5]):
+        pri = 'High' if i < 2 else 'Med'
+        safe = '🟡확인필요' if any(k in p for k in ['배포','재시작','push','deploy','활성화']) else '🟢자동가능'
+        L.append(f'- [{pri}] {p[:100]}  ({safe})')
+else:
+    L.append('- [Med] 추적된 후속 작업 없음 — 신규 지시 대기')
+L.append('')
 
-# ── 인덱스 업데이트 ──────────────────────────────────────────────
-INDEX_FILE="${IMPROVEMENTS_DIR}/IMPROVEMENTS-INDEX.md"
-SUMMARY_LINE=$(echo "$REVIEW" | grep -A1 "이번 작업 요약" | tail -1 | sed 's/^[[:space:]]*//' | head -c 80)
-echo "- [${DATETIME}] **${PROJECT_NAME}** — ${SUMMARY_LINE} → \`$(basename "$NOTE_FILE")\`" >> "$INDEX_FILE"
-if [ "$(wc -l < "$INDEX_FILE" 2>/dev/null || echo 0)" -gt 30 ]; then
-    tail -30 "$INDEX_FILE" > "${INDEX_FILE}.tmp" && mv "${INDEX_FILE}.tmp" "$INDEX_FILE"
-fi
+# ⑦ 목표 대비 위치
+L.append('## ⑦ 🎯 목표 대비 위치')
+if goal_line:
+    L.append(f'최종 목표: {goal_line[:160]}')
+L.append(f'이번 세션 기여: 완료성 항목 {len(done_items)}건 / 미완료 {len(pending)}건 남음')
+L.append('')
 
-# ── systemMessage 출력 ───────────────────────────────────────────
-python3 -c "
-import json, sys
-review = sys.argv[1]
-note_file = sys.argv[2]
-msg = '[개선 노트 저장됨: ' + note_file + ']\n\n' + review[:500]
-print(json.dumps({'systemMessage': msg}))
-" "$REVIEW" "$(basename "$NOTE_FILE")"
+# ⑧ 자기 개선
+L.append('## ⑧ 🔧 자기 개선 (이번 발견)')
+if lessons:
+    L.append(bullets(lessons, n=5))
+else:
+    L.append('- 이번 세션 decision-log에서 자동 추출된 개선 교훈 없음 (경미/정상 세션)')
+L.append('')
 
-# ── [High] 항목 → context_note.md 자동 삽입 ────────────────────
-CONTEXT_NOTE="${PROJECT_DIR}/context_note.md"
-if [ -f "$CONTEXT_NOTE" ]; then
-    HIGH_ITEMS=$(echo "$REVIEW" | grep -oP '\[High\][^\n]+' 2>/dev/null | head -3 | sed 's/^/- /')
-    if [ -n "$HIGH_ITEMS" ]; then
-        # 이미 "필수 인지" 섹션이 있으면 교체, 없으면 추가
-        if grep -q "## 5\. 다음 세션 필수 인지" "$CONTEXT_NOTE" 2>/dev/null; then
-            python3 - "$CONTEXT_NOTE" "$HIGH_ITEMS" << 'PYEOF'
-import sys, re
-path = sys.argv[1]
-items = sys.argv[2]
-text = open(path, encoding='utf-8').read()
-section = f"## 5. 다음 세션 필수 인지\n{items}\n"
-text = re.sub(r'## 5\. 다음 세션 필수 인지.*?(?=\n## |\Z)', section, text, flags=re.DOTALL)
-open(path, 'w', encoding='utf-8').write(text)
+# ⑨ 자기 학습 (다음 세션 적용)
+L.append('## ⑨ 📚 자기 학습 (다음 세션 적용)')
+learn = []
+for les in lessons[:3]:
+    learn.append(f'{les[:100]} → 다음 작업 시 사전 점검')
+if not learn:
+    if viol:
+        learn.append(f'Agent 도구 위반 {viol}회 — 다음 세션 NCO 위임 우선')
+    else:
+        learn.append('반복 적용할 신규 교훈 없음 — 기존 규칙 유지')
+L.append(bullets(learn, n=3))
+L.append('')
+L.append('---')
+L.append(f'_결정론적 생성 (LLM 비의존) · 소스: git×{len([r for r in REPOS if is_repo(r)])}repo · track · decision-log · backlog · PRD_')
+
+REVIEW = '\n'.join(L)
+
+# ── 저장 ──────────────────────────────────────────────────────────
+note_file = f'{IMPROVE}/{PROJNAME}-{DATE}-{TIMEHM}.md'
+try:
+    open(note_file, 'w', encoding='utf-8').write(REVIEW + '\n')
+except Exception as e:
+    out(f'[개선노트 저장실패: {e}]')
+
+# docs/improvements 사본
+docs = os.path.join(PROJECT, 'docs')
+if os.path.isdir(docs) and os.access(docs, os.W_OK):
+    try:
+        os.makedirs(os.path.join(docs,'improvements'), exist_ok=True)
+        open(os.path.join(docs,'improvements',os.path.basename(note_file)),'w',encoding='utf-8').write(REVIEW+'\n')
+    except Exception:
+        pass
+
+# 인덱스
+idx = f'{IMPROVE}/IMPROVEMENTS-INDEX.md'
+try:
+    line = f'- [{now_str}] **{PROJNAME}** — {summary} → `{os.path.basename(note_file)}`\n'
+    open(idx,'a',encoding='utf-8').write(line)
+    ls = open(idx,encoding='utf-8').read().splitlines()
+    if len(ls) > 30:
+        open(idx,'w',encoding='utf-8').write('\n'.join(ls[-30:])+'\n')
+except Exception:
+    pass
+
+# ── ⑧⑨ + ⑥High → context_note.md "## 5. 다음 세션 필수 인지" 주입 ──
+ctx = ''
+for cand in [os.path.join(PROJECT,'context_note.md'), f'{HOME}/projects/context_note.md']:
+    if os.path.exists(cand):
+        ctx = cand; break
+carry = []
+for les in lessons[:2]:
+    carry.append(f'- [학습] {les[:110]}')
+for p in pending[:2]:
+    carry.append(f'- [다음] {p[:110]}')
+if ctx and carry:
+    try:
+        text = open(ctx, encoding='utf-8').read()
+        section = '## 5. 다음 세션 필수 인지\n' + '\n'.join(carry) + '\n'
+        if re.search(r'## 5\. 다음 세션 필수 인지', text):
+            text = re.sub(r'## 5\. 다음 세션 필수 인지.*?(?=\n## |\Z)', section, text, flags=re.DOTALL)
+        else:
+            text = text.rstrip() + '\n\n' + section
+        open(ctx,'w',encoding='utf-8').write(text)
+    except Exception:
+        pass
+
+# ── systemMessage ────────────────────────────────────────────────
+head = '\n'.join(REVIEW.splitlines()[:22])
+out(f'[개선 노트 저장됨: {os.path.basename(note_file)}]\n\n{head}\n… (전문: {note_file})')
 PYEOF
-        else
-            printf '\n## 5. 다음 세션 필수 인지\n%s\n' "$HIGH_ITEMS" >> "$CONTEXT_NOTE"
-        fi
-    fi
-fi
-
-# ── Ollama 모드 거짓 보고 감지 ─────────────────────────────────
-# 모델이 NCO 도구 실행을 주장했지만 실제 호출 기록이 없으면 경고 출력
-if [ "${NCO_OLLAMA_MODE:-0}" = "1" ]; then
-    # 실제 NCO 호출 횟수 확인
-    _ACTUAL_NCO=0
-    if [ -f "$_TRACK" ]; then
-        _ACTUAL_NCO=$(python3 -c "
-import json
-try: print(json.load(open('$_TRACK')).get('nco_calls', 0))
-except: print(0)
-" 2>/dev/null || echo 0)
-    fi
-
-    # REVIEW 텍스트에서 거짓 NCO 실행 주장 감지
-    _FALSE_CLAIM=0
-    if echo "$REVIEW" | grep -qiE '(nco|토론|위임|병렬).*(실행|완료|진행|중입니다|되었습니다)'; then
-        [ "$_ACTUAL_NCO" -eq 0 ] && _FALSE_CLAIM=1
-    fi
-
-    if [ "$_FALSE_CLAIM" -eq 1 ]; then
-        python3 -c "
-import json
-msg = '[⚠ 거짓 보고 감지]\n로컬 모델이 NCO 도구 실행을 주장했으나 실제 호출 기록이 없습니다.\n실제 NCO 호출: 0회 — 응답을 신뢰하지 마세요.'
-print(json.dumps({'systemMessage': msg}))
-" 2>/dev/null
-    fi
-fi
-
-# ── 주기적 통합 (7일마다, 오래된 파일 5개+ 시) ──────────────────
-CONSOLIDATE_SCRIPT="/Users/nova-ai/projects/security-kb/notes-consolidate.sh"
-[ -f "$CONSOLIDATE_SCRIPT" ] && bash "$CONSOLIDATE_SCRIPT" "$PROJECT_NAME" 2>/dev/null &
+exit 0
