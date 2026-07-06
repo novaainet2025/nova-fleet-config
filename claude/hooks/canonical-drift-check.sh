@@ -2,6 +2,7 @@
 
 LOCAL_DIR="${HOME}/.claude/hooks"
 CANONICAL_DIR="${HOME}/nova-fleet-config/claude/hooks"
+TPL=$(printf '%s%s%s' '{{' HOME '}}')
 
 get_mtime() {
     if stat -f %m "$1" >/dev/null 2>&1; then
@@ -34,10 +35,10 @@ for local_file in "$LOCAL_DIR"/*.sh; do
     [ -f "$canonical_file" ] || continue
 
     compare_file="$canonical_file"
-    if grep -q '{{HOME}}' "$canonical_file"; then
+    if grep -Fq "$TPL" "$canonical_file"; then
         compare_file=$(mktemp "${TMPDIR:-/tmp}/canonical-drift-check.XXXXXX") || exit 1
         TMP_FILES="${TMP_FILES:+${TMP_FILES} }${compare_file}"
-        sed "s|{{HOME}}|$HOME|g" "$canonical_file" > "$compare_file"
+        sed "s|$TPL|$HOME|g" "$canonical_file" > "$compare_file"
     fi
 
     if cmp -s "$local_file" "$compare_file"; then
