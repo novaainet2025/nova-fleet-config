@@ -177,6 +177,15 @@
             "timeout": 3
           }
         ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/secret-exfil-guard.sh"
+          }
+        ]
       }
     ],
     "Stop": [
