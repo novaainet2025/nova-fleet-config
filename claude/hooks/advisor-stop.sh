@@ -136,14 +136,19 @@ dl_entries = []   # (ts, desc)
 if os.path.exists(DLOG):
     try:
         for ln in open(DLOG, encoding='utf-8'):
-            m = re.match(r'\|\s*(~)?\s*(\d{4}-\d{2}-\d{2})?\s*(\d{1,2}):(\d{2})\s*\|\s*([^|]+)\|', ln)
+            # | 시각 | 결정/작업(action) | 근거(reason) | 증거등급 | ...
+            m = re.match(r'\|\s*(~)?\s*(\d{4}-\d{2}-\d{2})?\s*(\d{1,2}):(\d{2})\s*\|\s*([^|]+?)\s*\|\s*([^|]*?)\s*\|', ln)
             if not m: continue
-            _, date, hh, mm, desc = m.groups()
+            _, date, hh, mm, action, reason = m.groups()
             if not date:   # 날짜 없는 구(舊) 엔트리 → 스킵
                 continue
             ts = f'{date} {int(hh):02d}:{mm}'
             if ts >= start_str:
-                dl_entries.append((ts, re.sub(r'\*+','',desc).strip()))
+                clean = lambda s: re.sub(r'\*+','',s or '').strip()
+                a, r = clean(action), clean(reason)
+                if a.startswith('모니터링'):   # 반복 모니터링 로그 제외 (노이즈)
+                    continue
+                dl_entries.append((ts, a, r))
     except Exception:
         pass
 
@@ -187,7 +192,7 @@ done_stages = [k for k in stage_keys if stages.get(k)]
 key_src = json.dumps([
     sorted(c[1] for c in commits),
     sorted(f'{r}/{p}' for r,p in changed),
-    [t for t,_ in dl_entries],
+    [t for t,_,_ in dl_entries],
     touched,
     done_stages,
 ], ensure_ascii=False)
@@ -222,7 +227,8 @@ else:
 
 # ── ⑧ 자기개선 · ⑨ 자기학습 — decision-log 교훈 결정론적 추출 ──────
 LESSON_KW = ['반성','정정','재발','오탐','회귀','누수','cry-wolf','오독','위반','근본원인','버그']
-lessons = [d for _, d in dl_entries if any(k in d for k in LESSON_KW)]
+# (action, reason) 쌍 — ⑧은 reason(문제/원인), ⑨는 action기반 규칙으로 구분 사용
+lesson_pairs = [(a, r) for _, a, r in dl_entries if any(k in (a+' '+r) for k in LESSON_KW)]
 
 # ── 9섹션 리포트 조립 ─────────────────────────────────────────────
 def bullets(items, empty='(없음)', n=8):
@@ -254,21 +260,17 @@ if dl_entries:
     L.append(f'핵심: {dl_entries[-1][1][:120]}')
 L.append('')
 
-# ② Before → After
+# ② Before → After (decision-log 근거=이전 문제, 결정=이번 조치)
 L.append('## ② Before → After (변화)')
-if commits or dl_entries:
-    L.append('| 이전 문제 / 목표 | 이번 조치 | 근거 |')
+if dl_entries or commits:
+    L.append('| 이전 문제 | 이번 조치 | 근거 |')
     L.append('|---|---|---|')
-    rows = 0
-    for ts, d in dl_entries[-6:]:
-        cell = d.replace('|','/')[:80]
-        L.append(f'| (세션 전 상태) | {cell} | decision-log {ts} |')
-        rows += 1
-    for rn, c in commits[:4]:
-        L.append(f'| — | {c.split(" ",1)[-1][:70].replace("|","/")} | {rn} {c.split()[0]} |')
-        rows += 1
-    if rows == 0:
-        L.append('| — | 변화 없음(조회/분석 세션) | — |')
+    for ts, a, r in dl_entries[-6:]:
+        before = (r.replace('|','/')[:55]) or '—'
+        after  = a.replace('|','/')[:60]
+        L.append(f'| {before} | {after} | {ts} |')
+    for rn, c in commits[:3]:
+        L.append(f'| — | {c.split(" ",1)[-1][:60].replace("|","/")} | {rn} {c.split()[0]} |')
 else:
     L.append('변화 없음 (조회/분석 세션)')
 L.append('')
@@ -276,11 +278,10 @@ L.append('')
 # ③ 완료 (검증됨)
 L.append('## ③ ✅ 완료 (검증됨)')
 done_items = []
-for ts, d in dl_entries:
-    tier = 'T?'
-    tm = re.search(r'\bT([1-4])\b', d)
-    if tm: tier = 'T'+tm.group(1)
-    done_items.append(f'{d[:110]}  _[{ts} · {tier}]_')
+for ts, a, r in dl_entries:
+    tm = re.search(r'\bT([1-4])\b', a+' '+r)
+    tier = 'T'+tm.group(1) if tm else 'T?'
+    done_items.append(f'{a[:100]}  _[{ts} · {tier}]_')
 if not done_items and commits:
     done_items = [f'{c}  _[{rn}]_' for rn, c in commits[:6]]
 L.append(bullets(done_items, '검증된 완료 항목 없음', n=10))
@@ -314,19 +315,19 @@ if goal_line:
 L.append(f'이번 세션 기여: 완료성 항목 {len(done_items)}건 / 미완료 {len(pending)}건 남음')
 L.append('')
 
-# ⑧ 자기 개선
-L.append('## ⑧ 🔧 자기 개선 (이번 발견)')
-if lessons:
-    L.append(bullets(lessons, n=5))
+# ⑧ 자기 개선 (이번 발견한 문제/원인 = reason 컬럼)
+L.append('## ⑧ 🔧 자기 개선 (이번 발견한 문제·원인)')
+if lesson_pairs:
+    L.append(bullets([f'{(r or a)[:120]}  _(조치: {a[:50]})_' for a, r in lesson_pairs], n=5))
 else:
     L.append('- 이번 세션 decision-log에서 자동 추출된 개선 교훈 없음 (경미/정상 세션)')
 L.append('')
 
-# ⑨ 자기 학습 (다음 세션 적용)
-L.append('## ⑨ 📚 자기 학습 (다음 세션 적용)')
+# ⑨ 자기 학습 (다음 세션 적용할 규칙 = action 기반, ⑧과 구분)
+L.append('## ⑨ 📚 자기 학습 (다음 세션 적용 규칙)')
 learn = []
-for les in lessons[:3]:
-    learn.append(f'{les[:100]} → 다음 작업 시 사전 점검')
+for a, r in lesson_pairs[:3]:
+    learn.append(f'{a[:52]} → 재발방지 규칙화')
 if not learn:
     if viol:
         learn.append(f'Agent 도구 위반 {viol}회 — 다음 세션 NCO 위임 우선')
@@ -372,8 +373,8 @@ for cand in [os.path.join(PROJECT,'context_note.md'), f'{HOME}/projects/context_
     if os.path.exists(cand):
         ctx = cand; break
 carry = []
-for les in lessons[:2]:
-    carry.append(f'- [학습] {les[:110]}')
+for a, r in lesson_pairs[:2]:
+    carry.append(f'- [학습] {a[:110]}')
 for p in pending[:2]:
     carry.append(f'- [다음] {p[:110]}')
 if ctx and carry:
@@ -388,8 +389,31 @@ if ctx and carry:
     except Exception:
         pass
 
-# ── systemMessage ────────────────────────────────────────────────
-head = '\n'.join(REVIEW.splitlines()[:22])
-out(f'[개선 노트 저장됨: {os.path.basename(note_file)}]\n\n{head}\n… (전문: {note_file})')
+# ── systemMessage (가독성 digest — 요약/Gap/개선/학습/다음단계만) ──
+def _clip(s, n):
+    return s.replace('\n',' ').strip()[:n]
+D = []
+D.append(f'📋 세션 종료 리포트 — {PROJNAME}  ({DATE} {time.strftime("%H:%M", time.localtime(now))})')
+D.append('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+D.append(f'① 요약 · {summary} · {task_type}')
+if edited:
+    D.append(f'   편집: {", ".join(edited[:6])}')
+D.append(f'⑤ Gap · {gap_block.replace("**","")}')
+D.append('⑧ 자기개선(발견한 문제·원인):')
+for a, r in (lesson_pairs[:3] or [('', '추출된 교훈 없음 (경미/정상 세션)')]):
+    D.append(f'   • {_clip(r or a, 64)}')
+D.append('⑨ 자기학습(다음 세션 규칙):')
+for x in learn[:3]:
+    D.append(f'   • {_clip(x, 70)}')
+D.append('⑥ 다음 단계:')
+if pending:
+    for i, p in enumerate(pending[:3]):
+        pri = 'High' if i < 2 else 'Med '
+        D.append(f'   • [{pri}] {_clip(p,58)}')
+else:
+    D.append('   • 신규 지시 대기')
+D.append('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+D.append(f'📄 전문(②변화·③완료·④미완료·⑦목표 포함): {note_file}')
+out('\n'.join(D))
 PYEOF
 exit 0
