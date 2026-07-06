@@ -121,6 +121,10 @@ except: print('')
         # delegate.py --ai X 위임 → 대상 에이전트를 스테이지 마킹용으로 추출
         # (delegate.py는 로컬워커에 /api/task 위임; --ai 값으로 review/verification/구현 등 단계 판정)
         _da=$(printf '%s' "$CMD" | grep -oE '[-][-]ai[= ]+[A-Za-z0-9_-]+' | head -1 | sed -E 's/[-][-]ai[= ]+//')
+        # [2026-07-06] curl JSON body 위임도 마킹: "ai":"codex" / "ai": "codex" (사용자 지적: 33% 고착 원인)
+        if [ -z "$_da" ]; then
+            _da=$(printf '%s' "$CMD" | grep -oE '"ai"[[:space:]]*:[[:space:]]*"[A-Za-z0-9_-]+"' | head -1 | sed -E 's/.*"([A-Za-z0-9_-]+)"$/\1/')
+        fi
         echo "$_da" | grep -qE '^[A-Za-z0-9_-]{1,40}$' && export NCO_TASK_AGENT="$_da"
         ;;
 esac
