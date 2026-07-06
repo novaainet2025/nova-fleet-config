@@ -242,10 +242,22 @@ else
 fi
 
 if [ "$TTS_MODE" = "all_tts" ]; then
-    # all-tts Hub health check (:7861)
-    HEALTH=$(curl -s --connect-timeout 2 --max-time 3 "${TTS_API}/health" 2>/dev/null || echo "")
-    if ! echo "$HEALTH" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d.get('status')=='ok'" 2>/dev/null; then
-        echo "[$(date +%H:%M:%S)] all-tts 서버 다운 — 종료" >> "$LOG"
+    # all-tts Hub health check (:7861) — 다운이어도 침묵 금지: launchd 재기동 → say 폴백
+    _tts_healthy() {
+        curl -s --connect-timeout 2 --max-time 3 "${TTS_API}/health" 2>/dev/null \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); assert d.get('status')=='ok'" 2>/dev/null
+    }
+    if ! _tts_healthy; then
+        echo "[$(date +%H:%M:%S)] all-tts 서버 다운 — launchd 재기동 시도" >> "$LOG"
+        launchctl kickstart -k "gui/$(id -u)/com.nova.all-tts" 2>/dev/null \
+            || launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.nova.all-tts.plist" 2>/dev/null
+        for _i in 1 2 3 4 5 6; do sleep 1; _tts_healthy && break; done
+    fi
+    if ! _tts_healthy; then
+        _KO_VOICES=$(say -v '?' 2>/dev/null | awk '/ko_KR/{print $1}')
+        SAY_VOICE=$(echo "$_KO_VOICES" | grep -m1 -x Yuna || echo "$_KO_VOICES" | head -1)
+        echo "[$(date +%H:%M:%S)] all-tts 복구 실패 — macOS say 폴백 (voice=${SAY_VOICE:-default})" >> "$LOG"
+        echo "$CHUNKS" | say ${SAY_VOICE:+-v "$SAY_VOICE"} 2>/dev/null
         exit 0
     fi
     ROUTE_MODEL=""
