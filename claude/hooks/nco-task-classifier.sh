@@ -80,9 +80,16 @@ d = {}
 if os.path.exists(f):
     try: d = json.load(open(f))
     except: pass
+order = {'unknown': 0, 'simple': 1, 'config': 2, 'bug': 3, 'new_feature': 4}
+task_type = '$TASK_TYPE'
+current_max = d.get('task_type_max', d.get('task_type', 'unknown'))
+if order.get(task_type, 0) >= order.get(current_max, 0):
+    d['task_type_max'] = task_type
+else:
+    d['task_type_max'] = current_max
 # 새 user prompt마다 task_seq 증가 → 위임 결정/권고 1회만 발화하도록
 d['task_seq'] = d.get('task_seq', 0) + 1
-d['task_type'] = '$TASK_TYPE'
+d['task_type'] = task_type
 d['task_decision'] = 'pending'   # UserPromptSubmit 워크플로우 훅이 결정
 d['task_warned_seq'] = d.get('task_warned_seq', -1)
 d['direct_edits'] = 0

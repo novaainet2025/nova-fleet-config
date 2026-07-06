@@ -83,7 +83,7 @@ tr        = load_json(TRACK)
 stages    = load_json(STAGEP)
 nco_calls = int(tr.get('nco_calls', 0) or 0)
 direct    = int(tr.get('direct_edits', 0) or 0)
-task_type = tr.get('task_type', 'unknown')
+task_type = tr.get('task_type_max') or tr.get('task_type') or 'unknown'
 viol      = int(tr.get('agent_violations', 0) or 0)
 
 # ── 멀티레포 git: 세션 시작 이후 커밋 + 세션 중 수정된 dirty 파일 ──
@@ -144,12 +144,13 @@ if os.path.exists(DLOG):
     try:
         for ln in open(DLOG, encoding='utf-8'):
             # | 시각 | 결정/작업(action) | 근거(reason) | 증거등급 | ...
-            m = re.match(r'\|\s*(~)?\s*(\d{4}-\d{2}-\d{2})?\s*(\d{1,2}):(\d{2})\s*\|\s*([^|]+?)\s*\|\s*([^|]*?)\s*\|', ln)
+            m = re.match(r'\|\s*(~)?\s*(\d{4}-\d{2}-\d{2})\s*(?:(\d{1,2}):(\d{2})|(\d{1,2}):([^\s|]+))?\s*\|\s*([^|]+?)\s*\|\s*([^|]*?)\s*\|', ln)
             if not m: continue
-            _, date, hh, mm, action, reason = m.groups()
-            if not date:   # 날짜 없는 구(舊) 엔트리 → 스킵
-                continue
-            ts = f'{date} {int(hh):02d}:{mm}'
+            _, date, hh, mm, bad_hh, bad_mm, action, reason = m.groups()
+            if hh is not None and mm is not None:
+                ts = f'{date} {int(hh):02d}:{mm}'
+            else:
+                ts = f'{date} 12:00'
             if ts >= start_str:
                 clean = lambda s: re.sub(r'\*+','',s or '').strip()
                 a, r = clean(action), clean(reason)
@@ -233,7 +234,7 @@ else:
     gap_block = '**측정불가** (파이프라인 스테이지 기록 없음 — 직접수정/조회/모니터링 세션)'
 
 # ── ⑧ 자기개선 · ⑨ 자기학습 — decision-log 교훈 결정론적 추출 ──────
-LESSON_KW = ['반성','정정','재발','오탐','회귀','누수','cry-wolf','오독','위반','근본원인','버그']
+LESSON_KW = ['반성','정정','재발','오탐','회귀','누수','cry-wolf','오독','위반','근본원인','버그','에러','누락','스텁','적발']
 # (action, reason) 쌍 — ⑧은 reason(문제/원인), ⑨는 action기반 규칙으로 구분 사용
 lesson_pairs = [(a, r) for _, a, r in dl_entries if any(k in (a+' '+r) for k in LESSON_KW)]
 
