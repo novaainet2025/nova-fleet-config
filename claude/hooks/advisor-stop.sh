@@ -70,10 +70,14 @@ except Exception:
 if cursor > start:
     start = cursor
 now       = int(time.time())
-# 최소 리포트 간격 30분 — 매 턴 미니리포트 반복 발화(노이즈) 방지 (사용자 지적 2026-07-06).
+# 최소 리포트 간격 — 매 턴 미니리포트 반복 발화(노이즈) 방지 (사용자 지적 2026-07-06).
+# 조용한 스킵은 "출력이 안 된다"로 오인되므로(사용자 지적 2건째) 한 줄 안내를 남긴다.
 # NCO_REPORT_FORCE=1 로 우회 가능(테스트·수동 재생성용).
-if cursor and (now - cursor) < 1800 and os.environ.get('NCO_REPORT_FORCE') != '1':
-    out()
+REPORT_MIN_INTERVAL = 900  # 15분
+if cursor and (now - cursor) < REPORT_MIN_INTERVAL and os.environ.get('NCO_REPORT_FORCE') != '1':
+    ago = (now - cursor) // 60
+    remain = (REPORT_MIN_INTERVAL - (now - cursor)) // 60 + 1
+    out(f'📋 리포트 생략 — 직전 리포트 {ago}분 전 (다음 자동 리포트 ~{remain}분 후 · 즉시 보기: NCO_REPORT_FORCE=1)')
 start_str = time.strftime('%Y-%m-%d %H:%M', time.localtime(start))
 now_str   = time.strftime('%Y-%m-%dT%H:%M', time.localtime(now))
 DATE      = time.strftime('%Y-%m-%d', time.localtime(now))
