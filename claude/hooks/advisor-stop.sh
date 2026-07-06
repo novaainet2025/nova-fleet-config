@@ -73,8 +73,10 @@ now       = int(time.time())
 # 최소 리포트 간격 — 매 턴 미니리포트 반복 발화(노이즈) 방지 (사용자 지적 2026-07-06).
 # 조용한 스킵은 "출력이 안 된다"로 오인되므로(사용자 지적 2건째) 한 줄 안내를 남긴다.
 # NCO_REPORT_FORCE=1 로 우회 가능(테스트·수동 재생성용).
-REPORT_MIN_INTERVAL = 900  # 15분
-if cursor and (now - cursor) < REPORT_MIN_INTERVAL and os.environ.get('NCO_REPORT_FORCE') != '1':
+# 기본 0(비활성): 사용자는 매 Stop 풀리포트를 원함 — 반복 문제의 본질은 빈도가 아니라
+# 내용 신선도였고 그것은 증분커서가 해결. 원하면 NCO_REPORT_MIN_INTERVAL=초 로 재활성.
+REPORT_MIN_INTERVAL = int(os.environ.get('NCO_REPORT_MIN_INTERVAL', '0') or '0')
+if REPORT_MIN_INTERVAL > 0 and cursor and (now - cursor) < REPORT_MIN_INTERVAL and os.environ.get('NCO_REPORT_FORCE') != '1':
     ago = (now - cursor) // 60
     ago_txt = '방금' if ago < 1 else f'{ago}분 전'
     remain = (REPORT_MIN_INTERVAL - (now - cursor)) // 60 + 1
@@ -226,7 +228,7 @@ if prev_file:
         head = open(prev_file, encoding='utf-8').read(400)
         km = re.search(r'> key:\s*([0-9a-f]{32})', head)
         if km and km.group(1) == DEDUP_KEY:
-            out()   # 동일 세션-상태 → 재생성 안 함
+            out('📋 리포트 생략 — 직전 리포트 이후 변경 없음 (동일 상태)')
         dm = re.search(r'> 생성:\s*(\S+)', head)
         if dm: prev_date = dm.group(1)
     except Exception:
