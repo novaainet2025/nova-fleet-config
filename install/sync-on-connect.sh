@@ -51,8 +51,10 @@ if [ "$APPLY" -eq 1 ]; then
       log "⚠ stash pop 충돌 — fleet-config 클론에 수동 확인 필요: cd $REPO && git stash show && git stash drop"
     fi
   fi
-  log "apply.sh --force 실행 (보존가드 우회, 백업+롤백 내장)"
-  bash "$REPO/install/apply.sh" --force 2>&1 | grep -E '^\[fleet-apply\]' | tail -5 || \
+  # 2026-07-08 사용자 규칙화: --force 제거 — newest-wins(최신 우선) 적용.
+  # 로컬이 최신이면 역배포(로컬→canonical), canonical이 최신이면 로컬 적용.
+  log "apply.sh 실행 (newest-wins: 최신 파일 우선, 백업+롤백 내장)"
+  bash "$REPO/install/apply.sh" 2>&1 | grep -E '^\[fleet-apply\]' | tail -5 || \
     log "apply 실패 — 수동 점검 필요"
   lh=$(ls "$HOME"/.claude/hooks/*.sh 2>/dev/null | wc -l | tr -d ' ')
   lc=$(ls "$HOME"/.claude/commands/*.md 2>/dev/null | wc -l | tr -d ' ')

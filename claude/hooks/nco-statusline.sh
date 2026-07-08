@@ -116,7 +116,9 @@ try:
     d=json.load(sys.stdin)
     for x in d.get('agents',[]):
         g=x.get('gate') or {}
-        if g.get('available') is False: print(x.get('id'))
+        # 리밋만 표시: gate.available=false 는 서킷오픈 전 사유(quota/일시오류/empty completion 등)를
+        # 포괄하므로 reason 이 실제 리밋(quota/rate_limit/usage_limit)일 때만 리밋으로 분류. (2026-07-06)
+        if g.get('available') is False and g.get('reason') in ('quota','rate_limit','usage_limit'): print(x.get('id'))
 except Exception: pass
 " 2>/dev/null | sort -u > "$_tmp_limits" 2>/dev/null && mv -f "$_tmp_limits" "${_CACHE_DIR}/provider-limits.txt" 2>/dev/null
     else
@@ -456,6 +458,33 @@ try:
     if not week_reset and cached.get('WEEK_RESET'):
         week_reset = cached['WEEK_RESET']
 
+    # Fable 세션 토큰 예산 — transcript의 <total_tokens>N tokens left</total_tokens> 마커(매 턴 갱신)
+    # 최대 관측값을 총예산으로 캐시(FABLE_TOTAL) — 세션 초기 마커가 tail 윈도우 밖으로 밀려도 유지
+    fable_left = ''
+    fable_pct = '0'
+    try:
+        fable_total = int(cached.get('FABLE_TOTAL', '0') or 0)
+    except Exception:
+        fable_total = 0
+    try:
+        tp = str(d.get('transcript_path') or '')
+        if tp and 'fable' in (mid + mname).lower() and os.path.isfile(tp):
+            sz = os.path.getsize(tp)
+            with open(tp, 'rb') as fp:
+                if sz > 262144: fp.seek(sz - 262144)
+                tail_txt = fp.read().decode('utf-8', 'ignore')
+            marks = re.findall(r'<total_tokens>(\d+) tokens left</total_tokens>', tail_txt)
+            if marks:
+                fable_remain = int(marks[-1])
+                fable_total = max(fable_total, fable_remain)
+                if fable_remain >= 1e6: fable_left = f'{fable_remain/1e6:.1f}M'
+                elif fable_remain >= 1e3: fable_left = f'{fable_remain/1e3:.0f}K'
+                else: fable_left = str(fable_remain)
+                if fable_total > 0:
+                    fable_pct = str(int((fable_total - fable_remain) * 100 / fable_total))
+    except Exception:
+        pass
+
     lines = [
         f'BRACKET={bracket}',
         f'CTX_PCT={int(ctx_pct)}',
@@ -466,6 +495,9 @@ try:
         f'WEEK_RESET={week_reset}',
         f'PERM_MODE={d.get(\"permission_mode\", \"default\")}',
         f'PROJECT_DIR={proj_dir}',
+        f'FABLE_LEFT={fable_left}',
+        f'FABLE_PCT={fable_pct}',
+        f'FABLE_TOTAL={fable_total}',
     ]
     # 유효 데이터 있을 때만 캐시 저장
     if mid or mname:
@@ -498,6 +530,8 @@ except Exception:
     print(f'WEEK_RESET={week_r}')
     print(f'PERM_MODE={perm}')
     print(f'PROJECT_DIR={proj_dir}')
+    print('FABLE_LEFT=')
+    print('FABLE_PCT=0')
 " 2>/dev/null)
 
 while IFS='=' read -r key val; do
@@ -511,6 +545,8 @@ while IFS='=' read -r key val; do
     WEEK_RESET) WEEK_RESET="$val" ;;
     PERM_MODE)  PERM_MODE="$val" ;;
     PROJECT_DIR) PROJECT_DIR="$val" ;;
+    FABLE_LEFT) FABLE_LEFT="$val" ;;
+    FABLE_PCT)  FABLE_PCT="$val" ;;
   esac
 done <<< "$_PARSED"
 
@@ -801,7 +837,12 @@ else
       _LIMIT_DISP="${_LIMIT_DISP} ${R}${_lim_label}${RST}${R}⛔${RST}"
     done < "$_PLIMIT_FILE"
   fi
-  echo -e "  ${GR}1일${RST} $(make_bar $RATE_DAY) $(pct_color $RATE_DAY) ${GR}·${RST} ${GR}주별${RST} $(make_bar $RATE_WEEK) $(pct_color $RATE_WEEK) ${GR}|${RST} ${GR}Ctx:${RST}$(pct_color $CTX_PCT) ${GR}|${RST} $(cost_color $COST)${_LIMIT_DISP}"
+  # Fable 세션 토큰 예산 (transcript 마커 기반, Fable 모델일 때만 표시)
+  _FABLE_DISP=""
+  if [ -n "$FABLE_LEFT" ]; then
+    _FABLE_DISP=" ${GR}|${RST} ${GR}Fable${RST} $(make_bar ${FABLE_PCT:-0}) $(pct_color ${FABLE_PCT:-0}) ${DIM}(${FABLE_LEFT} 남음)${RST}"
+  fi
+  echo -e "  ${GR}1일${RST} $(make_bar $RATE_DAY) $(pct_color $RATE_DAY) ${GR}·${RST} ${GR}주별${RST} $(make_bar $RATE_WEEK) $(pct_color $RATE_WEEK) ${GR}|${RST} ${GR}Ctx:${RST}$(pct_color $CTX_PCT) ${GR}|${RST} $(cost_color $COST)${_FABLE_DISP}${_LIMIT_DISP}"
   echo -e "  ${GR}↻${RST} ${GR}1일${RST} ${DIM}$(fmt_reset $DAY_RESET)${RST} ${GR}·${RST} ${GR}주별${RST} ${DIM}$(fmt_reset $WEEK_RESET)${RST}"
 fi
 

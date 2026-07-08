@@ -52,6 +52,42 @@ _fleet_preserve(){ # 0=preserve(local dirty), 1=safe-to-write
   return 1
 }
 
+# ★ newest-wins 양방향 동기화 (2026-07-08 사용자 규칙화: "최신 문서파일 우선적용"):
+#   렌더된 canonical(sub 치환 후)과 로컬 내용이 다르면 mtime으로 방향 결정 —
+#   · 로컬이 최신 → 역배포: 로컬 → canonical repo 복사 + 해당 파일만 커밋 + push 시도
+#   · canonical이 최신 → 기존대로 정방향 적용 (호출부 진행)
+#   canonical에 {{템플릿}} 토큰이 있으면 역배포 시 토큰이 소실되므로 보존(skip)+경고만.
+#   --force = 정방향 강제(복구용, newest-wins 무시). NOVA_NW_NO_PUSH=1 → push 생략(테스트용).
+_manifest_update(){ # $1=dst — manifest md5 갱신
+  { grep -v " $(basename "$1")\$" "$MANIFEST" 2>/dev/null; echo "$(md5sum "$1" 2>/dev/null | cut -d' ' -f1) $(basename "$1")"; } > "$MANIFEST.tmp" 2>/dev/null && mv -f "$MANIFEST.tmp" "$MANIFEST" 2>/dev/null
+}
+_newest_wins(){ # $1=src(canonical) $2=dst(local) ; 0=역배포 완료(호출부 skip), 1=정방향 적용 진행
+  local src="$1" dst="$2" n; n="$(basename "$dst")"
+  [ -f "$dst" ] || return 1
+  [ $FORCE -eq 1 ] && return 1
+  cmp -s <(sub <"$src") "$dst" && return 1   # 내용 동일 → 정방향 write 무해
+  [ "$dst" -nt "$src" ] || return 1           # canonical이 최신 → 정방향 적용
+  if grep -q '{{' "$src" 2>/dev/null; then
+    log "보존(skip): $n — 로컬이 최신이나 canonical에 템플릿 토큰 존재, 역배포 불가(수동 반영 필요)"
+    return 0
+  fi
+  cp "$dst" "$src" 2>/dev/null || { log "역배포 실패(cp): $n — 로컬 보존"; return 0; }
+  if git -C "$ROOT" add -- "$src" 2>/dev/null && \
+     git -C "$ROOT" commit -q -m "sync(newest-wins): $n — $(hostname -s 2>/dev/null || echo host) 로컬 최신본 역배포" -- "$src" 2>/dev/null; then
+    if [ "${NOVA_NW_NO_PUSH:-0}" = "1" ]; then
+      log "역배포+커밋: $n (push 생략 NOVA_NW_NO_PUSH=1)"
+    elif git -C "$ROOT" push -q origin main 2>/dev/null; then
+      log "역배포+push: $n (로컬 최신 → canonical 전파)"
+    else
+      log "역배포+커밋: $n (push 실패 — 다음 sync/수동 push에서 전파)"
+    fi
+  else
+    log "역배포(미커밋): $n — canonical 파일엔 반영됨, 커밋 실패(수동 확인)"
+  fi
+  _manifest_update "$dst"
+  return 0
+}
+
 if [ $DRY -eq 0 ]; then
   BK="$DEST/_fleet-backup-$(date +%Y%m%d-%H%M%S)"; mkdir -p "$BK"
   cp -R "$DEST/hooks" "$BK/" 2>/dev/null; cp -R "$DEST/commands" "$BK/" 2>/dev/null; cp "$DEST/settings.json" "$BK/" 2>/dev/null
@@ -70,12 +106,15 @@ if [ $DRY -eq 0 ]; then
 fi
 # CLAUDE.md (정본 글로벌 지침 — GAP 해소 2026-06-06; 템플릿 치환 통과, 백업은 위에서 수행)
 if [ -f "$ROOT/claude/CLAUDE.md" ]; then
-  if [ $DRY -eq 1 ]; then log "DRY CLAUDE.md"; else sub <"$ROOT/claude/CLAUDE.md" >"$DEST/CLAUDE.md"; log "CLAUDE.md"; fi
+  if [ $DRY -eq 1 ]; then log "DRY CLAUDE.md"
+  elif _newest_wins "$ROOT/claude/CLAUDE.md" "$DEST/CLAUDE.md"; then :
+  else sub <"$ROOT/claude/CLAUDE.md" >"$DEST/CLAUDE.md"; log "CLAUDE.md"; fi
 fi
 # hooks (템플릿 치환) — ★비파괴 보존가드: 미커밋/손편집 보존(skip), 적용후 bash -n 실패시 백업 롤백(fail-closed)
 for f in "$ROOT"/claude/hooks/*.sh; do [ -f "$f" ] || continue; n="$(basename "$f")"; dst="$DEST/hooks/$n"
   if [ $DRY -eq 1 ]; then log "DRY hook: $n"; continue; fi
-  if [ $FORCE -eq 0 ] && _fleet_preserve "$dst"; then log "보존(skip): $n — 미커밋/손편집 감지, 덮어쓰기 안 함(백업:$BK, 강제:--force)"; continue; fi
+  # newest-wins: 로컬이 최신이면 역배포 후 skip (기존 _fleet_preserve 보존가드 대체 — 2026-07-08)
+  if _newest_wins "$f" "$dst"; then continue; fi
   sub <"$f" >"$dst"; chmod +x "$dst"
   if ! bash -n "$dst" 2>/dev/null; then
     if [ -f "$BK/hooks/$n" ]; then cp "$BK/hooks/$n" "$dst"; log "$n 구문오류 → 백업 롤백(fail-closed)"; else log "$n 구문오류·백업없음(주의)"; fi
@@ -106,7 +145,9 @@ if [ -d "$LEGACY_HOOKS" ] && [ "$LEGACY_HOOKS" != "$DEST/hooks" ]; then
 fi
 # commands (템플릿 치환 — {{HOME}}/{{BASH_PATH}} 등; hooks와 동일하게 sub() 통과. raw cp는 토큰 미치환 버그)
 for f in "$ROOT"/claude/commands/*.md; do [ -f "$f" ] || continue; n="$(basename "$f")"
-  if [ $DRY -eq 1 ]; then log "DRY command: $n"; else sub <"$f" >"$DEST/commands/$n"; log "command: $n"; fi; done
+  if [ $DRY -eq 1 ]; then log "DRY command: $n"; continue; fi
+  if _newest_wins "$f" "$DEST/commands/$n"; then continue; fi
+  sub <"$f" >"$DEST/commands/$n"; log "command: $n"; done
 # skills (공유 스킬 — OS전용은 canonical에서 제외됨)
 if [ $DRY -eq 0 ] && [ -d "$ROOT/claude/skills" ]; then
   mkdir -p "$DEST/skills"
