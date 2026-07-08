@@ -1,4 +1,6 @@
 #!/bin/bash
+# NCO 재귀보호: NCO가 스폰한 서브프로세스 claude에서는 훅 무동작 (2026-07-08, 76s 훅스택+BOOTSTRAP 오염 T1)
+[ "${NCO_HOOK_DISABLED:-0}" = "1" ] && exit 0
 # SessionStart Hook — Mesh Auto-Responder 자동 시작
 #
 # NCO 백엔드(6200)와 Ollama 프록시(4100)가 온라인일 때만 실행.

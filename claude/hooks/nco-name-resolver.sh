@@ -1,4 +1,6 @@
 #!/bin/bash
+# NCO 재귀보호: NCO가 스폰한 서브프로세스 claude에서는 훅 무동작 (2026-07-08, 76s 훅스택+BOOTSTRAP 오염 T1)
+[ "${NCO_HOOK_DISABLED:-0}" = "1" ] && exit 0
 # ── nco-name-resolver.sh — claude-N 이름 해석 단일 소스 (2026-07-03) ──
 # 배경: nco-statusline.sh(가까운 조상 5단계) / inter-session-name.sh(먼 조상 8단계)
 #       / user-prompt-nco-context.sh(자체 5단계 + $PPID fallback 기록)가 서로 다른

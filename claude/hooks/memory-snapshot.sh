@@ -1,4 +1,6 @@
 #!/bin/bash
+# NCO 재귀보호: NCO가 스폰한 서브프로세스 claude에서는 훅 무동작 (2026-07-08, 76s 훅스택+BOOTSTRAP 오염 T1)
+[ "${NCO_HOOK_DISABLED:-0}" = "1" ] && exit 0
 # Stop hook — 세션 종료 시 맥락 노트 자동 생성 (하이브리드 아카이브)
 # NCO 프로바이더(Ollama) 사용 — Claude API 토큰 금지
 #

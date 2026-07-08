@@ -1,4 +1,6 @@
 #!/bin/bash
+# NCO 재귀보호: NCO가 스폰한 서브프로세스 claude에서는 훅 무동작 (2026-07-08, 76s 훅스택+BOOTSTRAP 오염 T1)
+[ "${NCO_HOOK_DISABLED:-0}" = "1" ] && exit 0
 # Global SessionStart Hook — NCO CLI Mesh 등록
 # 어떤 프로젝트에서 열린 Claude Code 세션이든 무조건 mesh에 등록
 # NCO 오프라인이면 조용히 스킵

@@ -1,4 +1,6 @@
 #!/bin/bash
+# NCO 재귀보호: NCO가 스폰한 서브프로세스 claude에서는 훅 무동작 (2026-07-08, 76s 훅스택+BOOTSTRAP 오염 T1)
+[ "${NCO_HOOK_DISABLED:-0}" = "1" ] && exit 0
 echo "[$(date +%H:%M:%S)] HOOK_START session-start.sh" >> /tmp/claude-hook-trace.log
 # SessionStart Hook - NCO context auto-load + CLI Mesh registration
 # Usage: NCO_NAME=nova claude   ← 이름으로 mesh에 자동 등록

@@ -1,4 +1,6 @@
 #!/bin/bash
+# NCO 재귀보호: NCO가 스폰한 서브프로세스 claude에서는 훅 무동작 (2026-07-08, 76s 훅스택+BOOTSTRAP 오염 T1)
+[ "${NCO_HOOK_DISABLED:-0}" = "1" ] && exit 0
 # L3: PreToolUse hook — 신규 기능 첫 코드 편집 차단 (안전망)
 # task_type=new_feature + 코드 파일(.js/.ts/.py/.sh) + 같은 prompt 내
 # mcp__nco-commands__nco-task 호출 0회면 exit 2로 차단.

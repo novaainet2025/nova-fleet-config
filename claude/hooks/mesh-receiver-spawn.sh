@@ -1,4 +1,6 @@
 #!/bin/bash
+# NCO 재귀보호: NCO가 스폰한 서브프로세스 claude에서는 훅 무동작 (2026-07-08, 76s 훅스택+BOOTSTRAP 오염 T1)
+[ "${NCO_HOOK_DISABLED:-0}" = "1" ] && exit 0
 # mesh-receiver-spawn.sh — Monitor 도구가 호출하는 wrapper.
 # 자기 Claude Code ancestor pid를 찾아 NCO_NAME/SID를 결정한 뒤 poller exec.
 # env 격리: 부모 Claude의 NCO_SESSION_ID/NCO_NAME envvar가 잘못 상속되어

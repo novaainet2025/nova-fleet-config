@@ -1,4 +1,6 @@
 #!/bin/bash
+# NCO 재귀보호: NCO가 스폰한 서브프로세스 claude에서는 훅 무동작 (2026-07-08, 76s 훅스택+BOOTSTRAP 오염 T1)
+[ "${NCO_HOOK_DISABLED:-0}" = "1" ] && exit 0
 # statusline-limit-guard.sh — nco-statusline.sh 리밋 추출 회귀 방지 (2026-07-06)
 #
 # 버그(ERR): 상태바 리밋 판정이 /api/agents 의 gate.available=false 만 필터하면

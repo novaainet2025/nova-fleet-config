@@ -1,4 +1,6 @@
 #!/bin/bash
+# NCO 재귀보호: NCO가 스폰한 서브프로세스 claude에서는 훅 무동작 (2026-07-08, 76s 훅스택+BOOTSTRAP 오염 T1)
+[ "${NCO_HOOK_DISABLED:-0}" = "1" ] && exit 0
 # mesh-status.sh — 본 세션의 mesh-receiver 연결 상태 점검
 # inter-session list.py --self 대응. SKILL.md 'status' 서브커맨드의 백엔드.
 

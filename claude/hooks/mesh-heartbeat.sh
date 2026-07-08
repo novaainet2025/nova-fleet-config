@@ -1,4 +1,6 @@
 #!/bin/bash
+# NCO 재귀보호: NCO가 스폰한 서브프로세스 claude에서는 훅 무동작 (2026-07-08, 76s 훅스택+BOOTSTRAP 오염 T1)
+[ "${NCO_HOOK_DISABLED:-0}" = "1" ] && exit 0
 # Global UserPromptSubmit Hook — NCO CLI Mesh 주기적 갱신
 # 매 프롬프트 제출 시 세션을 mesh에서 살아있게 유지 (TTL 갱신)
 # NCO 오프라인이면 조용히 스킵 (exit 0 필수 — exit 2 금지)

@@ -1,4 +1,6 @@
 #!/bin/bash
+# NCO 재귀보호: NCO가 스폰한 서브프로세스 claude에서는 훅 무동작 (2026-07-08, 76s 훅스택+BOOTSTRAP 오염 T1)
+[ "${NCO_HOOK_DISABLED:-0}" = "1" ] && exit 0
 # L1: UserPromptSubmit hook — NCO 라우팅 안내 주입
 # 신규 기능(new_feature) 분류 시, 첫 도구 호출이 nco-flow / nco-task가 되도록
 # additionalContext(stdout)에 BLOCKING 안내 주입. 카운터도 0으로 초기화.

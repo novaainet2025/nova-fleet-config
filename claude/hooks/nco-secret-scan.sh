@@ -1,4 +1,6 @@
 #!/bin/bash
+# NCO 재귀보호: NCO가 스폰한 서브프로세스 claude에서는 훅 무동작 (2026-07-08, 76s 훅스택+BOOTSTRAP 오염 T1)
+[ "${NCO_HOOK_DISABLED:-0}" = "1" ] && exit 0
 # PreToolUse: NCO 위임 시 시크릿(API키/토큰/.env) 유출 차단
 # nco-task / nco-team / nco-parallel / nco-discussion / nco-consensus 등 외부 AI에 데이터를 보내는 호출에서
 # 프롬프트 또는 인자 안에 시크릿 패턴이 발견되면 차단.

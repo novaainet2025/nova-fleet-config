@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# NCO 재귀보호: NCO가 스폰한 서브프로세스 claude에서는 훅 무동작 (2026-07-08, 76s 훅스택+BOOTSTRAP 오염 T1)
+[ "${NCO_HOOK_DISABLED:-0}" = "1" ] && exit 0
 # inter-session Tailscale setup wizard
 # - 현재 머신의 Tailscale IPv4 자동 감지
 # - 토큰 파일 권한·내용 검증

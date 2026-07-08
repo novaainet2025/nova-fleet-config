@@ -1,4 +1,6 @@
 #!/bin/bash
+# NCO 재귀보호: NCO가 스폰한 서브프로세스 claude에서는 훅 무동작 (2026-07-08, 76s 훅스택+BOOTSTRAP 오염 T1)
+[ "${NCO_HOOK_DISABLED:-0}" = "1" ] && exit 0
 # NCO AI Status Line — 컬러 + 정확한 세션명 + OS별 백엔드 레이블
 # v2 — fast-path + background refresh (v2.1.109 timeout 대응)
 #

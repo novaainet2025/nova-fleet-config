@@ -1,4 +1,6 @@
 #!/bin/bash
+# NCO 재귀보호: NCO가 스폰한 서브프로세스 claude에서는 훅 무동작 (2026-07-08, 76s 훅스택+BOOTSTRAP 오염 T1)
+[ "${NCO_HOOK_DISABLED:-0}" = "1" ] && exit 0
 # L2: PostToolUse hook on Edit/Write/MultiEdit — 자동 리뷰 트리거
 # 변경 파일에 대해 cursor-agent 리뷰를 백그라운드 로그로 큐잉.
 # 재진입 무한루프 방지: NCO_REVIEW_IN_PROGRESS=1 + 60초 파일별 lock.

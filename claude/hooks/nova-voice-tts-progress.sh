@@ -1,4 +1,6 @@
 #!/bin/bash
+# NCO 재귀보호: NCO가 스폰한 서브프로세스 claude에서는 훅 무동작 (2026-07-08, 76s 훅스택+BOOTSTRAP 오염 T1)
+[ "${NCO_HOOK_DISABLED:-0}" = "1" ] && exit 0
 # nova-voice-tts-progress.sh — PostToolUse: "XXX 작업이 완료됐습니다"
 SETTINGS_FILE="$HOME/Library/Application Support/nova-voice/nova-settings.json"
 DEBOUNCE_FILE="/tmp/nova-tts-progress-ts"

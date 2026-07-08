@@ -1,4 +1,6 @@
 #!/bin/bash
+# NCO 재귀보호: NCO가 스폰한 서브프로세스 claude에서는 훅 무동작 (2026-07-08, 76s 훅스택+BOOTSTRAP 오염 T1)
+[ "${NCO_HOOK_DISABLED:-0}" = "1" ] && exit 0
 # [사용자 요청] 반복 Stop 훅 루프/스팸 영구 제거 (fleet 원본). 복구: 아래 exit 0 삭제.
 # 안전 게이트: 수동 off / 상태 dedup / 세션당 재발화 상한
 if [ "$NCO_STOP_GATES" = "off" ]; then

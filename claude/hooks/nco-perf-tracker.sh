@@ -1,4 +1,6 @@
 #!/bin/bash
+# NCO 재귀보호: NCO가 스폰한 서브프로세스 claude에서는 훅 무동작 (2026-07-08, 76s 훅스택+BOOTSTRAP 오염 T1)
+[ "${NCO_HOOK_DISABLED:-0}" = "1" ] && exit 0
 # PostToolUse: NCO 위임 결과를 점수 DB에 기록
 # 매 nco-task / nco-team / nco-discussion 호출 후:
 #   - 어떤 AI인가 / 응답 길이 / 에러 여부 / 소요 시간 / 작업 유형

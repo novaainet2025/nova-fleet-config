@@ -1,4 +1,6 @@
 #!/bin/bash
+# NCO 재귀보호: NCO가 스폰한 서브프로세스 claude에서는 훅 무동작 (2026-07-08, 76s 훅스택+BOOTSTRAP 오염 T1)
+[ "${NCO_HOOK_DISABLED:-0}" = "1" ] && exit 0
 # UserPromptSubmit Hook: NCO 위임 규칙 강제 주입
 # NCO 온라인 시 항상 주입 — 심각도에 따라 분량만 조절
 # (단순 조회라도 기준선 규칙은 항상 표시)

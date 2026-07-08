@@ -1,4 +1,6 @@
 #!/bin/bash
+# NCO 재귀보호: NCO가 스폰한 서브프로세스 claude에서는 훅 무동작 (2026-07-08, 76s 훅스택+BOOTSTRAP 오염 T1)
+[ "${NCO_HOOK_DISABLED:-0}" = "1" ] && exit 0
 # PostToolUse Hook: NCO 에이전트 사용 추적
 # nco_task, nco_parallel, nco_commander 등 MCP 도구 호출 시 카운터 증가
 # nco-agent-enforce.sh 가 이 카운터를 보고 강제 여부 판단

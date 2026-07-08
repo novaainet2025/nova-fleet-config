@@ -1,4 +1,6 @@
 #!/bin/bash
+# NCO 재귀보호: NCO가 스폰한 서브프로세스 claude에서는 훅 무동작 (2026-07-08, 76s 훅스택+BOOTSTRAP 오염 T1)
+[ "${NCO_HOOK_DISABLED:-0}" = "1" ] && exit 0
 # UserPromptSubmit hook — advisor가 작업 시작 전 100단어 이내로 스코핑 조언
 # [DISABLED] 매 프롬프트 Haiku 서브프로세스 이중 과금 → 토큰 누수 제거
 exit 0
