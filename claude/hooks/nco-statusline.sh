@@ -475,7 +475,10 @@ try:
         fable_total = 0
     try:
         tp = str(d.get('transcript_path') or '')
-        if tp and 'fable' in (mid + mname).lower() and os.path.isfile(tp):
+        # transcript에 <total_tokens> 마커가 있으면 model명 무관하게 예산 표시.
+        # (2026-07-08 claude-1: fast-mode는 model을 opus로 보고 → 'fable' 게이트 탈락 →
+        #  Fable 예산이 있는데도 미표시되던 문제. 마커 존재 여부로만 판정하도록 완화.)
+        if tp and os.path.isfile(tp):
             sz = os.path.getsize(tp)
             with open(tp, 'rb') as fp:
                 if sz > 262144: fp.seek(sz - 262144)
