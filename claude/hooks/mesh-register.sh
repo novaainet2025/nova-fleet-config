@@ -42,7 +42,8 @@ if [ -z "$NCO_NAME" ]; then
         [ -f "$_pf" ] || continue
         _rp=$(cat "$_pf" 2>/dev/null | tr -d '[:space:]')
         [ -z "$_rp" ] && { rm -f "$_pf"; continue; }
-        if [ ! -d "/proc/$_rp" ]; then
+        # 이식성: /proc 는 Linux 전용(macOS 부재 → 전 live 세션 오판·몰살). kill -0 사용.
+        if ! kill -0 "$_rp" 2>/dev/null; then
           _dead_name=$(basename "$_pf" .pid)
           curl -s --connect-timeout 1 --max-time 2 -X POST "$NCO_URL/api/mesh/disconnect" \
             -H "Content-Type: application/json" \

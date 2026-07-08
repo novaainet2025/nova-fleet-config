@@ -52,6 +52,15 @@
 **이유**: OpenRouter 401 (2026-05-14 이후 미동작), 성능 저하 원인  
 **상태**: nova-macstudio ✅ | subnote ✅ | snt ✅ | kangnote fleet-sync로 동기화
 
+## [FLEET-F011] 로컬 LLM(mlx/ollama) 순차 사용 — 통합 메모리 보호 (2026-07-07 지시)
+**규칙**: 통합 메모리 Mac에서 mlx·ollama 등 로컬 LLM의 **동시 추론 금지 — 순차 사용**.
+**Why**: Apple Silicon 통합 메모리에서 대형 로컬 모델 2개 동시 추론 시 메모리 고갈·스왑·전체 세션 성능 붕괴.
+**How**:
+- 스크립트/러너는 `/tmp/nova-local-llm.lock` 파일락(pid 기록, 죽은 소유자 자동 정리)을 획득 후 로컬 모델 태스크 실행, 완료 후 해제 — 참조 구현: `~/project/nco/scripts/team-runner.sh`, `daily-blog-promo.sh`
+- 여러 팀/작업 처리 시 병렬 큐잉 금지, 이전 태스크 종료(completed/failed) 후 다음 실행
+- 수동 위임 시에도 mlx·ollama 태스크가 running이면 추가 로컬 모델 태스크 대기
+- NCO 서버 차원 세마포어는 백로그 (brain/worker tiering 담당 세션과 협의)
+
 ---
 
 > 이 파일은 nova-fleet-config/brain/memory/shared-feedback.md  

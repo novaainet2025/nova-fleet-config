@@ -247,6 +247,7 @@ except: print('병렬 실행 요청 완료')
 curl -s -X POST http://localhost:6200/api/task \
   -H "Content-Type: application/json" \
   -d "{
+    \"callerSessionId\": \"$NCO_SESSION_ID\", \"callerAgentId\": \"$NCO_NAME\",
     \"ai\": \"opencode\",
     \"prompt\": \"[컨텍스트] <상황> [목표] <결과> [제약] <금지사항> [검증] <성공기준>\",
     \"mode\": \"task\"
@@ -335,6 +336,7 @@ ISSUE_EOF
 curl -s -X POST http://localhost:6200/api/task \
   -H "Content-Type: application/json" \
   -d "{
+    \"callerSessionId\": \"$NCO_SESSION_ID\", \"callerAgentId\": \"$NCO_NAME\",
     \"ai\": \"<대체에이전트>\",
     \"prompt\": \"[재위임] 이전 에이전트(<원래에이전트>)가 실패함. 에러: <에러내용>. 원래 작업: <작업지시>\",
     \"mode\": \"task\"
@@ -375,6 +377,7 @@ bash ~/projects/nco-session-log.sh "nco-opus" "P6" "검증" "start" "Gap분석 +
 curl -s -X POST http://localhost:6200/api/task \
   -H "Content-Type: application/json" \
   -d "{
+    \"callerSessionId\": \"$NCO_SESSION_ID\", \"callerAgentId\": \"$NCO_NAME\",
     \"ai\": \"vllm\",
     \"prompt\": \"변경된 코드의 로직을 검증하라. 엣지케이스(빈입력, 최대값, 동시성, 에러)를 확인하라. 요청: $ARGUMENTS\",
     \"mode\": \"task\"
@@ -384,6 +387,7 @@ curl -s -X POST http://localhost:6200/api/task \
 curl -s -X POST http://localhost:6200/api/task \
   -H "Content-Type: application/json" \
   -d "{
+    \"callerSessionId\": \"$NCO_SESSION_ID\", \"callerAgentId\": \"$NCO_NAME\",
     \"ai\": \"cursor-agent\",
     \"prompt\": \"코드 리뷰: 보안 취약점, 성능 문제, 코드 품질을 검토하라. 요청: $ARGUMENTS\",
     \"mode\": \"task\"

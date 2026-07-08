@@ -42,12 +42,24 @@ HOME      = os.path.expanduser('~')
 TRACK     = f'/tmp/nco-track-{SID}.json'
 STAGEP    = f'/tmp/nco-stages-{SID}.json'
 PROJNAME  = os.path.basename(PROJECT)
-CURSOR    = f'{IMPROVE}/.report-cursor-{PROJNAME}'
+# 커서는 세션 스코프 (2026-07-08 수정): 프로젝트 단위 공유 커서는 같은 cwd의 동시 세션들이
+# 서로의 리포트 창을 덮어써 — 다른 세션 Stop 직후 내 창이 1분으로 붕괴하고 모든 실질 섹션이
+# "변경 없음" 보일러플레이트로 동일해진다 (사용자 지적: 두 세션 리포트 동일). SID로 분리.
+CURSOR    = f'{IMPROVE}/.report-cursor-{PROJNAME}-{SID}' if SID else f'{IMPROVE}/.report-cursor-{PROJNAME}'
 
 def out(msg=None):
     if msg:
         print(json.dumps({'systemMessage': msg}))
     sys.exit(0)
+
+# 세션별 커서 파일 누적 방지 — 14일 지난 커서는 정리
+try:
+    import glob as _cg
+    for _c in _cg.glob(f'{IMPROVE}/.report-cursor-*'):
+        if time.time() - os.path.getmtime(_c) > 14*86400:
+            os.remove(_c)
+except Exception:
+    pass
 
 # ── 세션 시작 앵커 = track 파일 birth-time (macOS: stat -f %B) ──────
 def birth(p):
@@ -214,6 +226,8 @@ if not meaningful:
 stage_keys = ['discussion','design','implementation','review','gap_analysis','verification']
 done_stages = [k for k in stage_keys if stages.get(k)]
 key_src = json.dumps([
+    SID,                       # 세션 스코프 — 다른 세션 리포트가 내 리포트를 dedup 억제하지 못하게 (2026-07-08)
+    nco_calls, direct,         # track 통계 — 위임/편집이 늘면 새 리포트로 인정
     sorted(c[1] for c in commits),
     sorted(f'{r}/{p}' for r,p in changed),
     [t for t,_,_ in dl_entries],
@@ -372,7 +386,9 @@ L.append(f'_결정론적 생성 (LLM 비의존) · 소스: git×{len([r for r in
 REVIEW = '\n'.join(L)
 
 # ── 저장 ──────────────────────────────────────────────────────────
-note_file = f'{IMPROVE}/{PROJNAME}-{DATE}-{TIMEHM}.md'
+# 파일명에 세션 꼬리표 — 같은 분에 두 세션이 Stop하면 서로 덮어쓰는 충돌 방지 (2026-07-08)
+_sid_tag = re.sub(r'[^A-Za-z0-9]', '', SID)[-4:] if SID else 'nosid'
+note_file = f'{IMPROVE}/{PROJNAME}-{DATE}-{TIMEHM}-{_sid_tag}.md'
 try:
     open(note_file, 'w', encoding='utf-8').write(REVIEW + '\n')
     open(CURSOR, 'w', encoding='utf-8').write(str(now) + '\n')

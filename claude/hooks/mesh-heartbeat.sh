@@ -90,17 +90,29 @@ _ALL_SESSIONS=$(curl -s --connect-timeout 1 --max-time 2 "$NCO_URL/api/mesh/sess
 if [ -n "$_ALL_SESSIONS" ]; then
   _DEAD_SIDS=$(echo "$_ALL_SESSIONS" | python3 -c "
 import sys, json, os
+def _alive(pid):
+    # 이식성 생존 검사: /proc 는 Linux 전용이라 macOS 에선 항상 부재 → 전 세션을
+    # DEAD 로 오판, live pid 파일 몰살(이름 셔플/충돌 근본원인). os.kill(pid,0) 사용.
+    try:
+        os.kill(int(pid), 0)
+    except (ProcessLookupError, ValueError):
+        return False
+    except PermissionError:
+        return True  # 존재하나 소유권 없음 → 살아있음
+    return True
 try:
   d = json.load(sys.stdin)
   for s in d.get('sessions', []):
     sid = str(s.get('sessionId', ''))
     aid = s.get('agentId', '')
-    if sid and sid.isdigit() and not os.path.isdir('/proc/' + sid):
+    if sid and sid.isdigit() and not _alive(sid):
       print(sid + ' ' + aid)
 except: pass
 " 2>/dev/null)
   while IFS=' ' read -r _dsid _daid; do
     [ -z "$_dsid" ] && continue
+    # 방어(불변식): 실제 살아있는 세션이면 disconnect/pid삭제 금지 — live pid 파일 불가침
+    kill -0 "$_dsid" 2>/dev/null && continue
     curl -s --connect-timeout 1 --max-time 2 -X POST "$NCO_URL/api/mesh/disconnect" \
       -H "Content-Type: application/json" \
       -d "{\"sessionId\":\"${_dsid}\",\"agentId\":\"${_daid}\"}" > /dev/null 2>&1
@@ -117,11 +129,11 @@ for _rf in /tmp/mesh-responder-*.pid; do
   [ -f "$_rf" ] || continue
   _rsid=$(basename "$_rf" .pid | sed 's/mesh-responder-//')
   [ -z "$_rsid" ] && continue
-  # 세션 프로세스가 살아있으면 스킵
-  [ -d "/proc/$_rsid" ] && continue
+  # 세션 프로세스가 살아있으면 스킵 (이식성: /proc → kill -0, macOS 대응)
+  kill -0 "$_rsid" 2>/dev/null && continue
   # 고아 responder kill
   _rpid=$(cat "$_rf" 2>/dev/null | tr -d '[:space:]')
-  if [ -n "$_rpid" ] && [ -d "/proc/$_rpid" ]; then
+  if [ -n "$_rpid" ] && kill -0 "$_rpid" 2>/dev/null; then
     kill "$_rpid" 2>/dev/null
   fi
   rm -f "$_rf" "/tmp/mesh-responder-${_rsid}.log"

@@ -11,12 +11,29 @@
 NCO_NAMES_DIR="/tmp/nco-names"
 mkdir -p "$NCO_NAMES_DIR"
 
+# --device-prefix: inter-session connect용 <device>-claude-N 이름 출력
+# (NCO_NAME/heartbeat는 bare claude-N 유지 — [[feedback_inter_session_name]])
+_DEVICE_PREFIX=0
+[ "$1" = "--device-prefix" ] && _DEVICE_PREFIX=1
+
+_emit() {
+  # $1 = bare claude-N name
+  if [ "$_DEVICE_PREFIX" = "1" ] && [ -n "$1" ]; then
+    _dev=$(hostname 2>/dev/null | tr '[:upper:]' '[:lower:]' | sed -E 's/\.local$//; s/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
+    [ -z "$_dev" ] && _dev="dev"
+    _suf="-$1"; _dev="${_dev:0:$((40-${#_suf}))}"; _dev="${_dev%-}"
+    echo "${_dev}${_suf}"
+  else
+    echo "$1"
+  fi
+}
+
 # 단일 소스 라우팅 (2026-07-03): resolver가 claude-N 주면 즉시 반환. 아래 레거시
 # walk+cleanup(ps -p 기반 live 파일 삭제 = 셔플 원인)은 resolver 부재 시에만 fallback.
 _rsv="$HOME/.claude/hooks/nco-name-resolver.sh"
 if [ -f "$_rsv" ]; then
   _rn=$(bash "$_rsv" 2>/dev/null)
-  [ -n "$_rn" ] && { echo "$_rn"; exit 0; }
+  [ -n "$_rn" ] && { _emit "$_rn"; exit 0; }
 fi
 
 MY_PID=""
@@ -75,4 +92,4 @@ fi
 
 rmdir "$_LOCKDIR" 2>/dev/null
 
-echo "${NCO_NAME}"
+_emit "${NCO_NAME}"

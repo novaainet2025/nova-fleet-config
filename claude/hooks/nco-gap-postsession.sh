@@ -50,6 +50,22 @@ curl -s -m 2 http://localhost:6200/health 2>/dev/null | grep -q '"status":"healt
     exit 0
 }
 
+# 동일 변경셋 반복 발행 게이트 (2026-07-08): nco 저장소 상시 dirty(수백 파일) 환경에서
+# 매 Stop마다 같은 Gap 분석이 재발행돼 로컬 워커 큐를 침수시킴(hermes 10건 적체 실측).
+# 변경셋 해시가 직전과 같으면 6시간 쿨다운 — 내용이 실제로 바뀌면 즉시 재분석.
+# 해시 파일은 세션 공유(전 세션 dedup 목적).
+GAP_HASH=$(echo "$CHANGED" | shasum -a 256 2>/dev/null | cut -d' ' -f1)
+GAP_HASH_FILE="$PERF_DIR/gap-last-hash"
+if [ -n "$GAP_HASH" ] && [ -f "$GAP_HASH_FILE" ]; then
+    read -r _lh _lt < "$GAP_HASH_FILE" 2>/dev/null
+    _age=$(( $(date +%s) - ${_lt:-0} ))
+    if [ "$_lh" = "$GAP_HASH" ] && [ "$_age" -lt 21600 ]; then
+        rm -f "$GAP_RUN_FLAG"
+        exit 0
+    fi
+fi
+[ -n "$GAP_HASH" ] && printf '%s %s' "$GAP_HASH" "$(date +%s)" > "$GAP_HASH_FILE" 2>/dev/null
+
 # 백그라운드로 Gap 분석 발행 — Stop 훅이 블로킹되지 않도록
 # 변수는 서브쉘 fork 시점에 그대로 상속됨 (single quote 회피 위해 subshell 사용)
 # disown으로 부모 jobs 테이블에서 제거 → 부모 종료해도 SIGHUP 안 받음

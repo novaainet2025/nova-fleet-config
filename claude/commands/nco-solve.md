@@ -161,6 +161,7 @@ bash ~/projects/nco-session-log.sh "nco-solve" "P5" "코드리뷰" "start" "curs
 curl -s -X POST http://localhost:6200/api/task \
   -H "Content-Type: application/json" \
   -d "{
+    \"callerSessionId\": \"$NCO_SESSION_ID\", \"callerAgentId\": \"$NCO_NAME\",
     \"ai\": \"cursor-agent\",
     \"prompt\": \"구현된 코드를 리뷰하라. 버그, 보안 취약점, 성능 문제, 코드 스타일 위반을 찾아 수정 제안을 제공하라. 원요청: $ARGUMENTS\",
     \"mode\": \"task\"
@@ -191,6 +192,7 @@ npx tsc --noEmit 2>/dev/null && echo "✔ TypeScript 오류 없음" || echo "✘
 curl -s -X POST http://localhost:6200/api/task \
   -H "Content-Type: application/json" \
   -d "{
+    \"callerSessionId\": \"$NCO_SESSION_ID\", \"callerAgentId\": \"$NCO_NAME\",
     \"ai\": \"vllm\",
     \"prompt\": \"다음 구현의 엣지케이스를 찾아라: 빈 입력, 최대값, 동시성, 네트워크 오류, 인증 실패 시나리오. 요청: $ARGUMENTS\",
     \"mode\": \"task\"

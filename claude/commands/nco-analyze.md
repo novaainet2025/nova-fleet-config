@@ -121,6 +121,7 @@ bash ~/projects/nco-session-log.sh "nco-analyze" "4" "분석수정" "start" "ope
 curl -s -X POST http://localhost:6200/api/task \
   -H "Content-Type: application/json" \
   -d "{
+    \"callerSessionId\": \"$NCO_SESSION_ID\", \"callerAgentId\": \"$NCO_NAME\",
     \"ai\": \"opencode\",
     \"prompt\": \"토론에서 도출된 개선점을 반영하여 분석을 수정하라. 누락된 관점을 보완하고 모순을 해소하라. 원주제: $ARGUMENTS\",
     \"mode\": \"task\"
@@ -139,6 +140,7 @@ bash ~/projects/nco-session-log.sh "nco-analyze" "5" "독립검증" "start" "vll
 curl -s -X POST http://localhost:6200/api/task \
   -H "Content-Type: application/json" \
   -d "{
+    \"callerSessionId\": \"$NCO_SESSION_ID\", \"callerAgentId\": \"$NCO_NAME\",
     \"ai\": \"vllm\",
     \"prompt\": \"다음 분석 결과를 독립적으로 검증하라. 사실 오류, 논리적 모순, 중요한 누락을 찾아라. 주제: $ARGUMENTS\",
     \"mode\": \"task\"

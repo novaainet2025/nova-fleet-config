@@ -406,7 +406,7 @@ if remote_tasks:
             tid=t.get('id','?'); agent=t.get('agent','ollama')
             prompt=f'[TURBO-{MY_SID}] 프로젝트:{PROJECT_NAME}\n{MAIN_TASK}\n\n태스크: {t.get("title","")}\n{t.get("prompt","")}'
             if nco_ok:
-                resp=api('POST','/api/task',{'ai':agent,'prompt':prompt},timeout=10)
+                resp=api('POST','/api/task',{'ai':agent,'prompt':prompt,'callerSessionId':MY_SID,'callerAgentId':MY_NAME},timeout=10)
                 nco_id=resp.get('taskId') or resp.get('id','')
                 if nco_id:
                     remote_nco_ids[tid]=nco_id
@@ -453,7 +453,7 @@ if remote_nco_ids:
                     fallback_agent='ollama'
                     pr(f'  {Y}↩ REFUSAL→FALLBACK{RST}  {task_def.get("title","?")} → {fallback_agent}')
                     fb_prompt=task_def.get('prompt','') or task_def.get('bash_cmd','')
-                    fb_resp=api('POST','/api/task',{'ai':fallback_agent,'prompt':f'[FALLBACK] {fb_prompt}'},timeout=10)
+                    fb_resp=api('POST','/api/task',{'ai':fallback_agent,'prompt':f'[FALLBACK] {fb_prompt}','callerSessionId':MY_SID,'callerAgentId':MY_NAME},timeout=10)
                     fb_id=fb_resp.get('taskId') or fb_resp.get('id','')
                     if fb_id:
                         remaining[tid]=fb_id  # 재폴링 대상으로 등록

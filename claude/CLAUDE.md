@@ -206,6 +206,8 @@ idle 상태의 다른 Claude 세션이 mesh DM을 자동으로 수신하려면 *
 | `ollama` | 검증·테스트·QA |
 | `openrouter` | 무료 백업·다목적 |
 | `nvidia` | Reasoner·복잡 추론 |
+| `mlx` | 로컬 코딩·검증 (Qwen3-Coder 30B-A3B, Apple Silicon MLX·무료) |
+| `hermes` | 툴 사용·함수 호출·구조적 추론 (Hermes/Qwen3-32B 로컬·무료) |
 | `higgsfield` | 이미지·영상 생성 전용 (FLUX.2, Veo 3.1, Kling) |
 
 
