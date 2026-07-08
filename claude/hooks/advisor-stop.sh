@@ -172,10 +172,15 @@ if os.path.exists(DLOG):
         pass
 
 # ── backlog 미완료(⑥) ────────────────────────────────────────────
+# 세션-스코프 게이트(2026-07-08 사용자 지적 "매번 같은 W9/W15/W16 반복"):
+# backlog.md는 감독 세션의 공유 정적 파일이라, 이번 세션 중 변경된 경우에만
+# 항목을 나열한다. 미변경이면 요약 한 줄로 대체 — 설계 원칙 "모든 소스 세션-스코프" 준수.
 BACKLOG = os.path.join(PROJECT, '.nco-supervisor', 'backlog.md')
 pending = []
+backlog_fresh = False
 if os.path.exists(BACKLOG):
     try:
+        backlog_fresh = os.path.getmtime(BACKLOG) >= start
         for ln in open(BACKLOG, encoding='utf-8'):
             s = ln.strip()
             if s.startswith('- [ ]') or s.startswith('- [~]'):
@@ -306,9 +311,14 @@ if not done_items and commits:
 L.append(bullets(done_items, '검증된 완료 항목 없음', n=10))
 L.append('')
 
-# ④ 미완료·미작업
+# ④ 미완료·미작업 — backlog 미변경 세션은 반복 나열 대신 요약 한 줄
 L.append('## ④ 🚧 미완료·미작업')
-L.append(bullets(pending, '추적된 미완료 항목 없음', n=8))
+if pending and backlog_fresh:
+    L.append(bullets(pending, '추적된 미완료 항목 없음', n=8))
+elif pending:
+    L.append(f'- 백로그 {len(pending)}건 유지 — 이번 세션 변경 없음 (전문: .nco-supervisor/backlog.md)')
+else:
+    L.append('- 추적된 미완료 항목 없음')
 L.append('')
 
 # ⑤ Gap 분석
@@ -316,13 +326,15 @@ L.append('## ⑤ 📊 Gap 분석 (Check)')
 L.append(gap_block)
 L.append('')
 
-# ⑥ 다음 단계 가이드
+# ⑥ 다음 단계 가이드 — backlog 미변경이면 반복 나열 금지(요약 한 줄)
 L.append('## ⑥ ➡️ 다음 단계 가이드')
-if pending:
+if pending and backlog_fresh:
     for i, p in enumerate(pending[:5]):
         pri = 'High' if i < 2 else 'Med'
         safe = '🟡확인필요' if any(k in p for k in ['배포','재시작','push','deploy','활성화']) else '🟢자동가능'
         L.append(f'- [{pri}] {p[:100]}  ({safe})')
+elif pending:
+    L.append(f'- [Med] 백로그 미변경 — 직전 리포트와 동일 {len(pending)}건 (전문: .nco-supervisor/backlog.md)')
 else:
     L.append('- [Med] 추적된 후속 작업 없음 — 신규 지시 대기')
 L.append('')
@@ -432,9 +444,11 @@ for x in learn[:3]:
     D.append(f'   · {_clip(x, 70)}')
 D.append('')
 D.append('▶ 다음 단계')
-if pending:
+if pending and backlog_fresh:
     for p in pending[:3]:
         D.append(f'   · [High] {_clip(p,58)}')
+elif pending:
+    D.append(f'   · 백로그 미변경 — 직전과 동일 {len(pending)}건 (backlog.md 참조)')
 else:
     D.append('   · [High] 신규 지시 대기')
 D.append('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
