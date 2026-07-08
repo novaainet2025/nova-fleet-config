@@ -460,10 +460,15 @@ try:
     if not week_reset and cached.get('WEEK_RESET'):
         week_reset = cached['WEEK_RESET']
 
-    # Fable 세션 토큰 예산 — transcript의 <total_tokens>N tokens left</total_tokens> 마커(매 턴 갱신)
-    # 최대 관측값을 총예산으로 캐시(FABLE_TOTAL) — 세션 초기 마커가 tail 윈도우 밖으로 밀려도 유지
+    # Fable 토큰 예산 — transcript의 <total_tokens>N tokens left</total_tokens> 마커.
+    # 예산은 계정 공유 풀(T1 2026-07-08: 타 세션 first 마커가 15M이 아닌 14.95M — 전 세션 동일 하강 밴드).
+    # 일부 세션엔 하네스가 마커를 주입하지 않음(전체 0개 실측) → 그 세션은 타 세션이
+    # 갱신한 공유 캐시 값을 신선도(10분) 내에서 폴백 사용. 캐시 저장 시 빈 값이 좋은 값을
+    # 덮어쓰지 않도록 fable_left 있을 때만 FABLE_* 갱신.
+    import time as _t
     fable_left = ''
     fable_pct = '0'
+    fable_ts = 0
     try:
         fable_total = int(cached.get('FABLE_TOTAL', '0') or 0)
     except Exception:
@@ -484,8 +489,16 @@ try:
                 else: fable_left = str(fable_remain)
                 if fable_total > 0:
                     fable_pct = str(int((fable_total - fable_remain) * 100 / fable_total))
+                fable_ts = int(_t.time())
     except Exception:
         pass
+    if not fable_left and 'fable' in (mid + mname).lower() and cached.get('FABLE_LEFT'):
+        # 마커 미주입 세션 → 타 세션이 공유 캐시에 남긴 마지막 관측값 표시
+        # (예산은 계정 공유라 유효. fable 세션이 안 돌면 값도 안 변함 — 사라짐보다 낫다)
+        fable_left = cached['FABLE_LEFT']
+        fable_pct = cached.get('FABLE_PCT', '0') or '0'
+        try: fable_ts = int(cached.get('FABLE_TS', '0') or 0)
+        except Exception: fable_ts = 0
 
     lines = [
         f'BRACKET={bracket}',
@@ -500,6 +513,7 @@ try:
         f'FABLE_LEFT={fable_left}',
         f'FABLE_PCT={fable_pct}',
         f'FABLE_TOTAL={fable_total}',
+        f'FABLE_TS={fable_ts}',
     ]
     # 유효 데이터 있을 때만 캐시 저장
     if mid or mname:
