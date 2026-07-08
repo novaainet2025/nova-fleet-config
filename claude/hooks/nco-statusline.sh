@@ -743,10 +743,11 @@ nco_pct_color() {
 # ── 진행 바 ───────────────────────────────────────────────────
 make_bar() {
   local pct=${1:-0}
+  local width=${2:-8}
   # 반올림: 9% → (9*8+50)/100=1개, 0% → 0개 (정확한 빈 상태만 0)
   local filled
   if [ "$pct" -gt 0 ]; then
-    filled=$(( (pct * 8 + 50) / 100 ))
+    filled=$(( (pct * width + 50) / 100 ))
     [ "$filled" -lt 1 ] && filled=1
   else
     filled=0
@@ -758,7 +759,7 @@ make_bar() {
   else                          bar_color="$G"
   fi
   local bar=""
-  for ((i=0; i<8; i++)); do
+  for ((i=0; i<width; i++)); do
     if [ "$i" -lt "$filled" ]; then
       bar="${bar}${bar_color}█${RST}"
     else
@@ -859,7 +860,7 @@ else
   # Fable 세션 토큰 예산 (transcript 마커 기반, Fable 모델일 때만 표시)
   _FABLE_DISP=""
   if [ -n "$FABLE_LEFT" ]; then
-    _FABLE_DISP=" ${GR}|${RST} ${GR}Fable${RST} $(make_bar ${FABLE_PCT:-0}) $(pct_color ${FABLE_PCT:-0}) ${DIM}(${FABLE_LEFT} 남음)${RST}"
+    _FABLE_DISP=" ${GR}|${RST} ${GR}Fable${RST} $(make_bar ${FABLE_PCT:-0} 4) $(pct_color ${FABLE_PCT:-0}) ${DIM}(${FABLE_LEFT})${RST}"
   fi
   echo -e "  ${GR}1일${RST} $(make_bar $RATE_DAY) $(pct_color $RATE_DAY) ${GR}·${RST} ${GR}주별${RST} $(make_bar $RATE_WEEK) $(pct_color $RATE_WEEK) ${GR}|${RST} ${GR}Ctx:${RST}$(pct_color $CTX_PCT) ${GR}|${RST} $(cost_color $COST)${_FABLE_DISP}${_LIMIT_DISP}"
   echo -e "  ${GR}↻${RST} ${GR}1일${RST} ${DIM}$(fmt_reset $DAY_RESET)${RST} ${GR}·${RST} ${GR}주별${RST} ${DIM}$(fmt_reset $WEEK_RESET)${RST}"
