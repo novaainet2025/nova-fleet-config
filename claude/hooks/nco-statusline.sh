@@ -453,6 +453,17 @@ try:
 
     # 모델 정보가 없으면 캐시에서 보완
     cached = load_cache()
+    # 비-Claude 세션(rate_limits/cost/context 미제공)이 캐시를 0으로 오염시키지 않게 캐시값 보존
+    # (2026-07-09 claude-1: nova-cli statusline 실행이 사용량을 0으로 덮어쓰던 문제)
+    if not rl and cached.get('RATE_DAY') not in (None,'','0'):
+        day_pct = int(cached.get('RATE_DAY','0') or 0); week_pct = int(cached.get('RATE_WEEK','0') or 0)
+        day_reset = cached.get('DAY_RESET', day_reset) or day_reset; week_reset = cached.get('WEEK_RESET', week_reset) or week_reset
+    if not cost and cached.get('COST') not in (None,'','0.00'):
+        try: cost_usd = float(cached.get('COST','0') or 0)
+        except: pass
+    if not cw and cached.get('CTX_PCT') not in (None,'','0'):
+        try: ctx_pct = int(cached.get('CTX_PCT','0') or 0)
+        except: pass
     if not (mid or mname) and cached.get('BRACKET'):
         bracket = cached['BRACKET']
     if not day_reset and cached.get('DAY_RESET'):
