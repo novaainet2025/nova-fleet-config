@@ -495,7 +495,7 @@ try:
                 fable_ts = int(_t.time())
     except Exception:
         pass
-    if not fable_left and 'fable' in (mid + mname).lower() and cached.get('FABLE_LEFT'):
+    if not fable_left and cached.get('FABLE_LEFT'):  # 계정 공유 예산 — model명 무관 폴백(2026-07-08 claude-1)
         # 마커 미주입 세션 → 타 세션이 공유 캐시에 남긴 마지막 관측값 표시
         # (예산은 계정 공유라 유효. fable 세션이 안 돌면 값도 안 변함 — 사라짐보다 낫다)
         fable_left = cached['FABLE_LEFT']
