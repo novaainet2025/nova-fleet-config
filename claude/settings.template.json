@@ -304,6 +304,16 @@
             "timeout": 3
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/nco-auto-heal.sh",
+            "timeout": 5
+          }
+        ]
       }
     ]
   },
@@ -329,7 +339,7 @@
       }
     }
   },
-  "advisorModel": "opus",
+  "advisorModel": "fable",
   "autoUpdatesChannel": "latest",
   "skipDangerousModePermissionPrompt": true
 }
