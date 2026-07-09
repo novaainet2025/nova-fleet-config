@@ -890,16 +890,13 @@ for l in d.get('limits',[]):
 " > "${_FW_FILE}.tmp" 2>/dev/null
         [ -s "${_FW_FILE}.tmp" ] && mv "${_FW_FILE}.tmp" "$_FW_FILE" || rm -f "${_FW_FILE}.tmp"
       fi
-    ) &
+    ) >/dev/null 2>&1 &
   fi
   _FW_PCT=$(cat "$_FW_FILE" 2>/dev/null)
   _FW_DISP=""
   [ -n "$_FW_PCT" ] && _FW_DISP=" ${GR}·${RST} ${GR}F주${RST} $(make_bar $_FW_PCT 4) $(pct_color $_FW_PCT)"
-  # Fable 세션 토큰 예산 (transcript 마커 기반, Fable 모델일 때만 표시)
+  # (세션 Fable 게이지는 2026-07-09 사용자 지시로 제거 — 주간 한도 F주가 실질 지표)
   _FABLE_DISP=""
-  if [ -n "$FABLE_LEFT" ]; then
-    _FABLE_DISP=" ${GR}|${RST} ${GR}Fable${RST} $(make_bar ${FABLE_PCT:-0} 4) $(pct_color ${FABLE_PCT:-0}) ${DIM}(${FABLE_LEFT})${RST}"
-  fi
   echo -e "  ${GR}1일${RST} $(make_bar $RATE_DAY) $(pct_color $RATE_DAY) ${GR}·${RST} ${GR}주별${RST} $(make_bar $RATE_WEEK) $(pct_color $RATE_WEEK) ${GR}|${RST} ${GR}Ctx:${RST}$(pct_color $CTX_PCT) ${GR}|${RST} $(cost_color $COST)${_FABLE_DISP}${_FW_DISP}${_LIMIT_DISP}"
   echo -e "  ${GR}↻${RST} ${GR}1일${RST} ${DIM}$(fmt_reset $DAY_RESET)${RST} ${GR}·${RST} ${GR}주별${RST} ${DIM}$(fmt_reset $WEEK_RESET)${RST}"
 fi
