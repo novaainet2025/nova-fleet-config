@@ -868,12 +868,39 @@ else
       _LIMIT_DISP="${_LIMIT_DISP} ${R}${_lim_label}${RST}${R}⛔${RST}"
     done < "$_PLIMIT_FILE"
   fi
+  # 주간 Fable 한도 — OAuth usage API의 limits[kind=weekly_scoped, model=Fable].percent
+  # (statusline 훅 페이로드에는 없음 → 키체인 토큰으로 직접 조회, 5분 캐시·백그라운드 갱신.
+  #  2026-07-09 사용자 요청: /usage의 'Current week (Fable)'와 상태바 동기화)
+  _FW_FILE="${_CACHE_DIR}/fable-week"
+  _FW_MT=$(stat -f %m "$_FW_FILE" 2>/dev/null || stat -c %Y "$_FW_FILE" 2>/dev/null || echo 0)
+  _FW_AGE=$(( $(date +%s) - _FW_MT ))
+  if [ "$_FW_AGE" -gt 300 ]; then
+    (
+      _TOK=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null | /usr/bin/python3 -c "import json,sys;print(json.load(sys.stdin).get('claudeAiOauth',{}).get('accessToken',''))" 2>/dev/null)
+      [ -z "$_TOK" ] && _TOK=$(/usr/bin/python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.claude/.credentials.json'))).get('claudeAiOauth',{}).get('accessToken',''))" 2>/dev/null)
+      if [ -n "$_TOK" ]; then
+        curl -s -m 4 "https://api.anthropic.com/api/oauth/usage" -H "Authorization: Bearer $_TOK" -H "anthropic-beta: oauth-2025-04-20" \
+        | /usr/bin/python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+for l in d.get('limits',[]):
+    sc=l.get('scope') or {}
+    if l.get('kind')=='weekly_scoped' and (sc.get('model') or {}).get('display_name')=='Fable':
+        print(int(l.get('percent') or 0)); break
+" > "${_FW_FILE}.tmp" 2>/dev/null
+        [ -s "${_FW_FILE}.tmp" ] && mv "${_FW_FILE}.tmp" "$_FW_FILE" || rm -f "${_FW_FILE}.tmp"
+      fi
+    ) &
+  fi
+  _FW_PCT=$(cat "$_FW_FILE" 2>/dev/null)
+  _FW_DISP=""
+  [ -n "$_FW_PCT" ] && _FW_DISP=" ${GR}·${RST} ${GR}F주${RST} $(make_bar $_FW_PCT 4) $(pct_color $_FW_PCT)"
   # Fable 세션 토큰 예산 (transcript 마커 기반, Fable 모델일 때만 표시)
   _FABLE_DISP=""
   if [ -n "$FABLE_LEFT" ]; then
     _FABLE_DISP=" ${GR}|${RST} ${GR}Fable${RST} $(make_bar ${FABLE_PCT:-0} 4) $(pct_color ${FABLE_PCT:-0}) ${DIM}(${FABLE_LEFT})${RST}"
   fi
-  echo -e "  ${GR}1일${RST} $(make_bar $RATE_DAY) $(pct_color $RATE_DAY) ${GR}·${RST} ${GR}주별${RST} $(make_bar $RATE_WEEK) $(pct_color $RATE_WEEK) ${GR}|${RST} ${GR}Ctx:${RST}$(pct_color $CTX_PCT) ${GR}|${RST} $(cost_color $COST)${_FABLE_DISP}${_LIMIT_DISP}"
+  echo -e "  ${GR}1일${RST} $(make_bar $RATE_DAY) $(pct_color $RATE_DAY) ${GR}·${RST} ${GR}주별${RST} $(make_bar $RATE_WEEK) $(pct_color $RATE_WEEK) ${GR}|${RST} ${GR}Ctx:${RST}$(pct_color $CTX_PCT) ${GR}|${RST} $(cost_color $COST)${_FABLE_DISP}${_FW_DISP}${_LIMIT_DISP}"
   echo -e "  ${GR}↻${RST} ${GR}1일${RST} ${DIM}$(fmt_reset $DAY_RESET)${RST} ${GR}·${RST} ${GR}주별${RST} ${DIM}$(fmt_reset $WEEK_RESET)${RST}"
 fi
 
