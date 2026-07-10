@@ -17,6 +17,16 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash {{HOME}}/.claude/hooks/nco-redis-ensure.sh",
+            "timeout": 5,
+            "statusMessage": "redis 상태 확인 중..."
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
             "command": "bash {{HOME}}/.claude/hooks/nco-session-start.sh",
             "timeout": 10,
             "statusMessage": "NCO 워크플로우 초기화 중..."
