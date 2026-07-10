@@ -31,6 +31,7 @@
 - **로컬·원격 불문 모든 세션은 작업을 수행하면 반드시 인터세션 호스트(중앙 코디네이터)에 작업 상태를 전송한다.**
 - **자동 경로(기본)**: tool-activity-reporter 훅 활성 + 로컬 NCO 가동 + (원격이면) nco ≥712219b
   pull로 fleet report `sessions[]` 자동 동봉. 이 조건이 갖춰진 세션은 별도 행동 불필요 — 훅이 이행한다.
+- fleet-sync/apply는 `~/.claude/settings.json`의 `hooks.PreToolUse`/`hooks.PostToolUse`에 tool-activity-reporter 등록을 자동 보장한다.
 - **수동 경로(자동 불가 시 의무)**: 훅/NCO/신버전 미비 세션은 작업 시작 시
   `status: working — <한 줄 요약>`, 완료 시 `done: <결과 요약>`을 IS로 중앙에 발신한다.
 - 세션 시작 시 자기 점검: `curl -s localhost:6200/api/activity`에 자기 세션명이 도구 사용 후 나타나면

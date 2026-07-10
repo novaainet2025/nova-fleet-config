@@ -17,6 +17,46 @@ done
 OS="$(uname -s)"; USR="$(whoami)"; BASHP="$(command -v bash)"
 log(){ echo "[fleet-apply] $*"; }
 sub(){ sed -e "s|{{HOME}}|$HOME|g" -e "s|{{USER}}|$USR|g" -e "s|{{OS}}|$OS|g" -e "s|{{BASH_PATH}}|$BASHP|g"; }
+_ensure_tool_activity_reporter_hooks(){ # settings.json에 reporter Pre/PostToolUse 멱등 등록
+  local settings="$DEST/settings.json" tmp backup
+  local pre_cmd='CLAUDE_HOOK_EVENT=PreToolUse bash ~/.claude/hooks/tool-activity-reporter.sh'
+  local post_cmd='CLAUDE_HOOK_EVENT=PostToolUse bash ~/.claude/hooks/tool-activity-reporter.sh'
+  [ $DRY -eq 1 ] && { log "DRY settings hook 보장: tool-activity-reporter"; return 0; }
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "[fleet-apply] jq 없음: settings.json 훅 등록 보장 불가. 적용 거부."
+    exit 4
+  fi
+  mkdir -p "$DEST"
+  [ -f "$settings" ] || printf '{}\n' > "$settings"
+  if ! jq empty "$settings" >/dev/null 2>&1; then
+    echo "[fleet-apply] settings.json 파싱 실패: $settings. 훅 등록 보장 불가. 적용 거부."
+    exit 5
+  fi
+  if jq -e --arg pre "$pre_cmd" --arg post "$post_cmd" '
+    def has_cmd($event; $cmd): any((.hooks[$event] // [])[]?.hooks[]?; .command == $cmd);
+    has_cmd("PreToolUse"; $pre) and has_cmd("PostToolUse"; $post)
+  ' "$settings" >/dev/null 2>&1; then
+    log "settings hook 보장: tool-activity-reporter 이미 등록됨(skip)"
+    return 0
+  fi
+  backup="$settings.fleet-hook-bak-$(date +%Y%m%d-%H%M%S)"
+  cp "$settings" "$backup"
+  tmp="$(mktemp "${TMPDIR:-/tmp}/fleet-settings.XXXXXX")"
+  if ! jq --arg pre "$pre_cmd" --arg post "$post_cmd" '
+    def has_cmd($event; $cmd): any((.hooks[$event] // [])[]?.hooks[]?; .command == $cmd);
+    def ensure_cmd($event; $cmd):
+      .hooks = (.hooks // {}) |
+      .hooks[$event] = (.hooks[$event] // []) |
+      if has_cmd($event; $cmd) then . else .hooks[$event] += [{"hooks":[{"type":"command","command":$cmd,"timeout":2}]}] end;
+    ensure_cmd("PreToolUse"; $pre) | ensure_cmd("PostToolUse"; $post)
+  ' "$settings" >"$tmp"; then
+    rm -f "$tmp"
+    echo "[fleet-apply] jq 갱신 실패: $settings. 백업=$backup"
+    exit 6
+  fi
+  mv "$tmp" "$settings"
+  log "settings hook 보장: tool-activity-reporter 등록 완료, 백업=$(basename "$backup")"
+}
 
 # ★ 안전가드: SSOT가 아직 안 채워진 빈 골격이면 적용 거부 (실수로 빈설정 적용 방지)
 HK=$(ls "$ROOT"/claude/hooks/*.sh 2>/dev/null | wc -l | tr -d " ")
@@ -126,6 +166,7 @@ done
 # .py 훅 배포 (plugin-cache 패처 등 — patch-inter-session.py; GAP 해소 2026-06-06)
 for f in "$ROOT"/claude/hooks/*.py; do [ -f "$f" ] || continue; n="$(basename "$f")"
   if [ $DRY -eq 1 ]; then log "DRY py-hook: $n"; else sub <"$f" >"$DEST/hooks/$n"; chmod +x "$DEST/hooks/$n"; log "py-hook: $n"; fi; done
+_ensure_tool_activity_reporter_hooks
 # 패처 실행 — inter-session plugin cache(client.py/shared.py)에 NCO 패치 재적용(멱등)
 if [ $DRY -eq 0 ] && [ -f "$DEST/hooks/patch-inter-session.py" ]; then
   python3 "$DEST/hooks/patch-inter-session.py" >/dev/null 2>&1 && log "patch-inter-session.py 실행(plugin cache 패치 적용)" || log "patch-inter-session.py 실행 실패(무시 — 다음 SessionStart 재시도)"
