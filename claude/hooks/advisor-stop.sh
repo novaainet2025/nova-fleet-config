@@ -391,6 +391,67 @@ def _uniq(xs):
     return o
 problems, rules = _uniq(problems), _uniq(rules)
 
+# ── 반복 교훈 누적 원장 + 자동 memory 승격 (2026-07-10, 사용자 승인: 누적+반복승격) ──
+# 훅은 매 턴 Stop마다 실행되므로 SID로 '세션당 1회'만 카운트 → count = 교훈이 반복된 '세션 수'.
+# count >= PROMOTE_AT 이면 매 세션 로드되는 memory(feedback_auto_*)로 자동 승격 → 영구화·재발방지.
+LEDGER     = f'{IMPROVE}/lessons-ledger.json'
+PROMOTE_AT = 3
+top_recurring = []
+try:
+    ledger = json.load(open(LEDGER, encoding='utf-8')) if os.path.exists(LEDGER) else {}
+except Exception:
+    ledger = {}
+def _norm(rule):
+    k = re.sub(r'\d+', '', rule or '')
+    k = re.sub(r'["“”‘’(){}]|예:.*$', '', k)
+    return re.sub(r'\s+', ' ', k).strip()[:70]
+_mem_dir = ''
+_trp = os.environ.get('NCO_TRANSCRIPT', '')
+if _trp:
+    _cand = os.path.join(os.path.dirname(_trp), 'memory')
+    if os.path.isdir(_cand): _mem_dir = _cand
+for rule in rules:
+    k = _norm(rule)
+    if not k: continue
+    e = ledger.get(k) or {'rule': rule, 'count': 0, 'sids': [], 'first': now_str, 'promoted': False}
+    if SID not in e.get('sids', []):          # 세션당 1회만 증가
+        e['sids'] = (e.get('sids', []) + [SID])[-50:]
+        e['count'] = e.get('count', 0) + 1
+    e['last'] = now_str; e['rule'] = rule
+    if e['count'] >= PROMOTE_AT and not e.get('promoted') and _mem_dir:
+        # 해시 기반 안정 slug — 한글 규칙도 충돌 없이 고유(가독 정보는 description/body에 보존)
+        slug = 'feedback_auto_' + hashlib.md5(k.encode('utf-8')).hexdigest()[:10]
+        mf = os.path.join(_mem_dir, slug + '.md')
+        try:
+            existing = [f for f in os.listdir(_mem_dir) if f.startswith('feedback_auto_')]
+            if not os.path.exists(mf) and len(existing) < 40:
+                body = ('---\n'
+                        f'name: {slug}\n'
+                        f'description: 반복교훈 자동승격({e["count"]}세션) — {rule[:66]}\n'
+                        'metadata:\n  type: feedback\n---\n\n'
+                        f'{rule}\n\n'
+                        f'**Why:** advisor-stop이 {e["count"]}개 세션에서 동일 교훈 반복 감지({e["first"]}~{now_str}). '
+                        '반복 실수 → 영구 규칙 승격.\n'
+                        '**How to apply:** 매 작업 보고·위임 시 이 규칙 선적용. '
+                        '관련 [[feedback_no_false_reports]] [[project_advisor_stop_session_truth]]\n')
+                open(mf, 'w', encoding='utf-8').write(body)
+                idx = os.path.join(_mem_dir, 'MEMORY.md')
+                cur = open(idx, encoding='utf-8').read() if os.path.exists(idx) else '# Memory Index\n'
+                if slug not in cur:
+                    open(idx, 'a', encoding='utf-8').write(
+                        f'- [자동승격: {rule[:46]}]({slug}.md) — {e["count"]}세션 반복 교훈 (advisor-stop {DATE})\n')
+                e['promoted'] = True
+                problems.append(f'♻️교훈 자동승격: "{rule[:40]}" ({e["count"]}세션 반복→memory)')
+        except Exception:
+            pass
+    ledger[k] = e
+top_recurring = [v['rule'] for _, v in sorted(ledger.items(), key=lambda kv: -kv[1].get('count', 0))
+                 if v.get('count', 0) >= 2][:3]
+try:
+    open(LEDGER, 'w', encoding='utf-8').write(json.dumps(ledger, ensure_ascii=False, indent=1))
+except Exception:
+    pass
+
 # ── 9섹션 리포트 조립 ─────────────────────────────────────────────
 def bullets(items, empty='(없음)', n=8):
     items = list(items)[:n]
@@ -554,8 +615,11 @@ for cand in [os.path.join(PROJECT,'context_note.md'), f'{HOME}/projects/context_
     if os.path.exists(cand):
         ctx = cand; break
 carry = []
+for rl in top_recurring[:2]:              # 반복 상위 교훈 = 영구(휘발 방지)
+    carry.append(f'- [반복학습] {rl[:110]}')
 for rl in rules[:2]:
-    carry.append(f'- [학습] {rl[:110]}')
+    if not any(rl[:40] in c for c in carry):
+        carry.append(f'- [학습] {rl[:110]}')
 if tx is not None:
     for u in tx['unverified'][-2:]:
         carry.append(f'- [다음] 미검증 종결: {u[:100]}')
