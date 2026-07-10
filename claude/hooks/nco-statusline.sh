@@ -872,7 +872,10 @@ else
   # (statusline 훅 페이로드에는 없음 → 키체인 토큰으로 직접 조회, 5분 캐시·백그라운드 갱신.
   #  2026-07-09 사용자 요청: /usage의 'Current week (Fable)'와 상태바 동기화)
   _FW_FILE="${_CACHE_DIR}/fable-week"
-  _FW_MT=$(stat -f %m "$_FW_FILE" 2>/dev/null || stat -c %Y "$_FW_FILE" 2>/dev/null || echo 0)
+  # GNU stat은 -f가 "실패"하지 않고 파일시스템 정보(마운트포인트)를 출력해 산술식을 깨뜨린다
+  # (kangnote WSL 실측, 2026-07-10) — GNU 형식(-c)을 먼저 시도하고 BSD(-f)는 맥 폴백으로.
+  _FW_MT=$(stat -c %Y "$_FW_FILE" 2>/dev/null || stat -f %m "$_FW_FILE" 2>/dev/null || echo 0)
+  case "$_FW_MT" in ''|*[!0-9]*) _FW_MT=0;; esac
   _FW_AGE=$(( $(date +%s) - _FW_MT ))
   if [ "$_FW_AGE" -gt 300 ]; then
     (
