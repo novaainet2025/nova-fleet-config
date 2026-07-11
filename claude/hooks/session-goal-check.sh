@@ -42,7 +42,7 @@ def user_text(c):
 def is_reminder(t):
     if not t: return True
     adm = ('<task-notification>','[task-notification]','<system-reminder>',
-           'system-reminder:','Stop hook feedback:')
+           'system-reminder:','Stop hook feedback:','[AUTO-LOOP]')
     return t.startswith(adm)
 
 RECEIPT = ('검증 영수증',)
