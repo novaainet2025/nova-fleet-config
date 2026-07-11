@@ -129,7 +129,8 @@ COMPLETION_PATTERNS = [
 ]
 
 # 영수증/검증 표식 (영수증 안에서는 완료어 허용)
-RECEIPT_HEADER = re.compile(r'^##\s*검증\s*영수증\s*$', re.MULTILINE)
+# '$' 앵커 제거: "## 검증 영수증 (최종)" 등 접미사 붙은 유효 헤더를 오차단하던 버그 수정
+RECEIPT_HEADER = re.compile(r'^##\s*검증\s*영수증', re.MULTILINE)
 RECEIPT_FIELDS = [
     r'(?:^|\n)\s*-?\s*\[?\s*변경\s*\]?',
     r'(?:^|\n)\s*-?\s*\[?\s*검증\s*방법\s*\]?',

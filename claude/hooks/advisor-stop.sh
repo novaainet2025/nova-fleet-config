@@ -253,6 +253,7 @@ def scan_transcript(path):
             '<system-reminder>',
             'system-reminder:',
             'Stop hook feedback:',
+            '[AUTO-LOOP]',
             'Base directory for this skill:',
             'Check /private/tmp/',
             '<local-command-caveat>',
