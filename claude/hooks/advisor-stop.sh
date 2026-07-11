@@ -45,6 +45,11 @@ export NCO_IMPROVE_DIR="$IMPROVEMENTS_DIR"
 
 python3 <<'PYEOF'
 import os, sys, json, subprocess, time, hashlib, re
+from datetime import datetime, timedelta, timezone
+try:
+    from zoneinfo import ZoneInfo
+except Exception:
+    ZoneInfo = None
 
 SID       = os.environ.get('NCO_SID','')
 PROJECT   = os.environ['NCO_PROJECT_DIR']
@@ -149,9 +154,98 @@ def scan_transcript(path):
             return ''
         return text[:limit] if len(text) <= limit else text[:limit-1] + '…'
 
+    def summarize_request(text, limit=60):
+        return one_line(text, limit=limit)
+
+    def normalize_spaces(text):
+        return re.sub(r'\s+', ' ', (text or '').strip())
+
+    def canonical_prefix(text):
+        return normalize_spaces(text).lower()
+
+    AUTO_PREFIXES = tuple(
+        canonical_prefix(s) for s in (
+            'kangnote fleet 싱크 후속',
+            'kangnote 최종 후속(폴백)',
+            'kangnote 최종 판정',
+            '패리티 루프',
+            '95점 루프',
+            '긴급 체크인',
+            '감독 체크인',
+            'commander 감독',
+        )
+    )
+    AUTO_PREFIX_RE = re.compile(
+        r'^(?:'
+        r'kangnote\s+fleet\s+싱크\s+후속\s*:|'
+        r'kangnote\s+최종\s+후속\s*\(\s*폴백\s*\)\s*:|'
+        r'kangnote\s+최종\s+판정\s*:|'
+        r'패리티\s+루프(?:\s+[^\n:]*)?\s+체크인\s*:|'
+        r'95점\s+루프(?:\s+[^\n:]*)?\s+체크인\s*:|'
+        r'패리티\s+루프\s+종료\s+판정\s*:|'
+        r'긴급\s+체크인(?:\s+[^\n:]*)?\s*:|'
+        r'체크인\s*:|'
+        r'감독\s+체크인(?:\s*:|$)|'
+        r'commander\s+감독(?:\s*:|$)'
+        r')',
+        re.I,
+    )
+    RECEIPT_PREFIXES = tuple(
+        canonical_prefix(s) for s in (
+            '검증 영수증',
+            '- [변경]',
+        )
+    )
+    # pushback = 사용자가 '이전 산출물'을 정정·질책. 주제어 오탐 방지: 교정 구문만 매칭.
+    # (기존 bare-keyword 방식은 "제대로 진행되는지"·"거짓 보고 금지" 같은 주제어를 오탐 → Gap 상한 오적용)
+    PUSHBACK_RE = re.compile(
+        r'틀렸|틀림|잘못\s*(?:했|됐|봤|보고|판단|이해)|거짓말|거짓이(?:야|잖|다|네|라)|'
+        r'거짓\s*보고(?:야|잖|네|하)|형편없|엉터리|실수\s*투성|왜\s+[^\n]{0,12}?안\s?[하되돼했]|'
+        r'제대로\s*안|똑바로|다시\s*해|안\s*됐|안\s*돼(?:요|잖|$)|왜\s*안'
+    )
+    LOCAL_TZ = ZoneInfo('Asia/Seoul') if ZoneInfo else timezone(timedelta(hours=9))
+
+    def parse_local_timestamp(ts):
+        if not isinstance(ts, str):
+            return None
+        try:
+            dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+            return dt.astimezone(LOCAL_TZ)
+        except Exception:
+            m = re.search(r'(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})', ts)
+            if not m:
+                return None
+            try:
+                naive = datetime.strptime(f'{m.group(1)} {m.group(2)}', '%Y-%m-%d %H:%M')
+                return (naive + timedelta(hours=9)).replace(tzinfo=LOCAL_TZ)
+            except Exception:
+                return None
+
+    def hhmm(ts):
+        local_dt = parse_local_timestamp(ts)
+        if local_dt is not None:
+            return local_dt.strftime('%H:%M')
+        m = re.search(r'T(\d{2}:\d{2})', ts or '')
+        return m.group(1) if m else '??:??'
+
+    def local_day(ts):
+        local_dt = parse_local_timestamp(ts)
+        if local_dt is not None:
+            return local_dt.strftime('%Y-%m-%d')
+        m = re.search(r'(\d{4}-\d{2}-\d{2})T', ts or '')
+        return m.group(1) if m else ''
+
+    def hhmm_sort_key(ts):
+        local_dt = parse_local_timestamp(ts)
+        if local_dt is not None:
+            return local_dt.isoformat()
+        m = re.search(r'(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})', ts or '')
+        return f'{m.group(1)}T{m.group(2)}' if m else '9999-99-99T99:99'
+
     def is_system_reminder(text):
         if not text:
             return True
+        canonical = canonical_prefix(text)
         admin_prefixes = (
             '<task-notification>',
             '[task-notification]',
@@ -164,17 +258,37 @@ def scan_transcript(path):
             '<local-command-caveat>',
             '<command-name>',
             '<local-command-stdout>',
-            '검증 영수증',
         )
         return (
             text.startswith(admin_prefixes)
-            or text.startswith('체크인:')
-            or text.startswith('Commander 감독')
+            or canonical.startswith(AUTO_PREFIXES)
+            or bool(AUTO_PREFIX_RE.match(canonical))
         )
+
+    def extract_substantive_request(text):
+        text = (text or '').strip()
+        if not text or is_system_reminder(text):
+            return ''
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        canonical = canonical_prefix(text)
+        if canonical.startswith(RECEIPT_PREFIXES) or any(canonical_prefix(ln).startswith(RECEIPT_PREFIXES) for ln in lines):
+            return ''
+        return text
+
+    def classify_request_status(assistant_text, is_last=False):
+        if is_last:
+            return '🔄진행중'
+        text = assistant_text or ''
+        if any(k in text for k in ('done:', '완료', '커밋')):
+            return '✅해결'
+        if any(k in text for k in ('대기', '회신 대기', '발주')):
+            return '⏳대기'
+        return '✅해결'
 
     tx = {'edited': [], 'bash': 0, 'deleg': 0, 'web': 0, 'reads': 0,
           'gate_blocks': 0, 'pushback': [], 'selfcorr': 0, 'unverified': [],
-          'goal': '', 'goal_first': '', 'goal_last': ''}
+          'goal': '', 'goal_first': '', 'goal_last': '', 'goals_timeline': [],
+          'goals_total': 0, 'goals_resolved': 0, 'final_receipt': False}
     if not path or not os.path.exists(path):
         return None
     try:
@@ -182,6 +296,8 @@ def scan_transcript(path):
     except Exception:
         return None
     ed = []
+    assistant_chunks = []
+    current_goal_idx = None
     for ln in raw[-6000:]:                      # 성능 상한
         try: d = json.loads(ln)
         except Exception: continue
@@ -205,6 +321,7 @@ def scan_transcript(path):
                     elif n == 'Skill' and 'nco' in str(inp.get('skill', '')): tx['deleg'] += 1
                 elif bt == 'text':
                     txt = b.get('text', '')
+                    assistant_chunks.append(txt)
                     if any(k in txt for k in ('정정합니다', '거짓이었', '오류였', '잘못 보고', '틀렸습니다')): tx['selfcorr'] += 1
                     for u in re.findall(r'\[미검증항목\]\s*([^\n]{4,90})', txt): tx['unverified'].append(u.strip())
         elif t == 'user':
@@ -213,15 +330,42 @@ def scan_transcript(path):
                 blob = json.dumps(c, ensure_ascii=False)
                 if '거짓·미검증 보고 차단' in blob: tx['gate_blocks'] += 1
             if '거짓·미검증 보고 차단' in utext or 'no-false-report-gate' in utext: tx['gate_blocks'] += 1
-            if utext and not is_system_reminder(utext):
+            req_text = extract_substantive_request(utext)
+            if req_text:
+                if current_goal_idx is not None:
+                    tx['goals_timeline'][current_goal_idx]['status'] = classify_request_status('\n'.join(assistant_chunks))
+                assistant_chunks = []
                 if not tx['goal']:
-                    tx['goal'] = utext.replace('\n', ' ')[:120]
+                    tx['goal'] = req_text.replace('\n', ' ')[:120]
                 if not tx['goal_first']:
-                    tx['goal_first'] = one_line(utext)
-                if not (utext.startswith('체크인:') or utext.startswith('Commander 감독')):
-                    tx['goal_last'] = one_line(utext)
-            if any(k in utext for k in ('틀렸', '거짓', '형편없', '실수 투성', '왜 안', '안되', '제대로')):
+                    tx['goal_first'] = one_line(req_text)
+                tx['goal_last'] = one_line(req_text)
+                tx['goals_timeline'].append({
+                    'sort_key': hhmm_sort_key(d.get('timestamp')),
+                    'day': local_day(d.get('timestamp')),
+                    'time': hhmm(d.get('timestamp')),
+                    'summary': summarize_request(req_text),
+                    'status': '🔄진행중',
+                })
+                current_goal_idx = len(tx['goals_timeline']) - 1
+            # 게이트 피드백(이미 gate_blocks로 카운트)은 pushback 이중계상 제외 + 교정구문만
+            if ('거짓·미검증 보고 차단' not in utext and 'no-false-report-gate' not in utext
+                    and PUSHBACK_RE.search(utext)):
                 tx['pushback'].append(utext.replace('\n', ' ')[:70])
+    if current_goal_idx is not None:
+        tx['goals_timeline'][current_goal_idx]['status'] = classify_request_status('\n'.join(assistant_chunks), is_last=True)
+    # Gap v2 — 목표기반 실측 필드 (final_receipt = 최종 어시스턴트 턴에 검증영수증 존재 여부)
+    final_text = '\n'.join(assistant_chunks)
+    tx['final_receipt'] = ('검증 영수증' in final_text)
+    tx['goals_total'] = len(tx['goals_timeline'])
+    tx['goals_resolved'] = sum(1 for it in tx['goals_timeline'] if it.get('status') == '✅해결')
+    tx['goals_timeline'] = sorted(tx['goals_timeline'], key=lambda item: (item.get('sort_key', ''), item.get('summary', '')))
+    multi_day = len({item.get('day') for item in tx['goals_timeline'] if item.get('day')}) > 1
+    for item in tx['goals_timeline']:
+        if multi_day and item.get('day'):
+            item['time_display'] = f'{item["day"][5:]} {item["time"]}'
+        else:
+            item['time_display'] = item.get('time', '??:??')
     tx['edited'] = sorted(set(ed))
     return tx
 
@@ -390,18 +534,45 @@ verif_sig = ''
 if tx is not None:
     verif_sig = f'⚠️보고검증 이슈 {tx["gate_blocks"]}회' if tx['gate_blocks'] else '✅보고검증 이슈 없음'
 if task_type == 'new_feature' and done_stages:
+    # L1 파이프라인 — 스테이지 기반 (등급 T2)
     pct  = int(len(done_stages)/6*100)
     gate = '통과 (≥95%)' if pct >= 95 else '미통과 (<95%) → 반복 필요 [end-of-turn-check 강제]'
     gap_block = f'달성률 **{pct}%** ({len(done_stages)}/6 파이프라인 단계) · 기준 95% → **{gate}**'
     if verif_sig: gap_block += f' · {verif_sig}'
+elif tx is not None and tx.get('goals_total', 0) >= 1:
+    # L2 목표기반 — goal-timeline 실측 (T4 base + T1 grounded). "측정불가" 대체.
+    total = tx['goals_total']
+    resolved = tx['goals_resolved']
+    # 마지막 목표(Stop 시점 항상 진행중): 최종 턴에 검증영수증 있으면 완료로 승격
+    last_promoted = bool(tx.get('final_receipt')) and resolved < total
+    eff_resolved = resolved + (1 if last_promoted else 0)
+    raw = int(round(eff_resolved / total * 100))
+    # T1 grounding 상한 — 부정 지상진실이면 완료 주장 불가
+    cap = 100
+    cap_reason = []
+    if tx['gate_blocks'] > 0:
+        cap = min(cap, 60); cap_reason.append(f'거짓보고게이트 {tx["gate_blocks"]}회→상한60')
+    if tx['pushback']:
+        cap = min(cap, 70); cap_reason.append(f'사용자지적 {len(tx["pushback"])}회→상한70')
+    if tx['unverified']:
+        cap = min(cap, 90); cap_reason.append(f'미검증항목 {len(tx["unverified"])}건→상한90')
+    pct = min(raw, cap)
+    remaining = total - eff_resolved
+    gate = '통과 (≥95%)' if pct >= 95 else '미통과 (<95%) → 미완료 목표 잔존'
+    detail = f'목표 {eff_resolved}/{total} 해결'
+    if remaining > 0: detail += f', {remaining}건 진행중/미완'
+    gap_block = f'달성률 **{pct}%** ({detail}) · 기준 95% → **{gate}**'
+    if pct < raw: gap_block += f' · raw {raw}%→상한 {cap}% ({"; ".join(cap_reason)})'
+    gap_block += f' · {verif_sig} · [근거: 목표추적{"+영수증" if tx.get("final_receipt") else ""}·T1grounded]'
 elif tx is not None:
+    # L3 요청없음 — heartbeat/알림 세션 (측정할 목표 자체가 없음)
     act = (f'편집 {len(tx["edited"])}파일 · 실행 {tx["bash"]}회 · 위임 {tx["deleg"]}건 · '
            f'조사 {tx["web"]}회 · 검증조회 {tx["reads"]}회')
-    gap_block = f'**측정불가** (목표대비 자동측정 불가 — 비파이프라인 세션) · 활동: {act} · {verif_sig}'
+    gap_block = f'**측정불가** (사용자 요청 없음 — heartbeat/알림 세션) · 활동: {act} · {verif_sig}'
 elif done_stages:
     gap_block = f'**측정불가** (전체 파이프라인 미적용) · 이번 완료 단계: {", ".join(done_stages)}'
 else:
-    gap_block = '**측정불가** (파이프라인 스테이지 기록 없음 — 직접수정/조회/모니터링 세션)'
+    gap_block = '**측정불가** (transcript 미확보 — 스테이지 기록 없음)'
 
 # ── ⑧ 자기개선 · ⑨ 자기학습 — decision-log 교훈 결정론적 추출 ──────
 LESSON_KW = ['반성','정정','재발','오탐','회귀','누수','cry-wolf','오독','위반','근본원인','버그','에러','누락','스텁','적발']
@@ -543,10 +714,17 @@ L.append('')
 
 L.append('## ▶ 세션 목표')
 if tx is None:
-    L.append('측정불가')
+    L.append('측정불가 (transcript 미확보 — Stop 훅 stdin에 transcript_path 없음)')
+elif not tx.get('goal_first'):
+    L.append('사용자 요청 없음 (heartbeat/알림만 있던 세션 — 추적할 목표 없음)')
 else:
-    L.append(f'시작 목표: {tx.get("goal_first") or "측정불가"}')
-    L.append(f'최근 지시: {tx.get("goal_last") or "측정불가"}')
+    L.append(f'시작 목표: {tx.get("goal_first")}')
+    L.append(f'최근 지시: {tx.get("goal_last") or tx.get("goal_first")}')
+    timeline = tx.get('goals_timeline') or []
+    if timeline:
+        L.append('요청 타임라인:')
+        for item in timeline:
+            L.append(f'- [{item.get("time_display", item["time"])}] {item["status"]} {item["summary"]}')
 L.append('')
 
 # ② Before → After (decision-log 근거=이전 문제, 결정=이번 조치)
@@ -707,6 +885,16 @@ _gl = (tx or {}).get('goal_last', '') if tx else ''
 D.append(f'   시작 목표: {_clip(_gf, 90)}' if _gf else '   측정불가')
 if _gl:
     D.append(f'   최근 지시: {_clip(_gl, 90)}')
+_gt = (tx or {}).get('goals_timeline', []) if tx else []
+if _gt:
+    overflow = len(_gt) - 8
+    display_items = _gt[-8:] if overflow <= 0 else ([{'time': '', 'status': '', 'summary': f'...외 {overflow}건'}] + _gt[-7:])
+    for item in display_items:
+        item_time = item.get('time_display') or item.get('time')
+        if item_time:
+            D.append(f'   [{item_time}] {item["status"]} {_clip(item["summary"], 60)}')
+        else:
+            D.append(f'   {_clip(item["summary"], 60)}')
 D.append('')
 D.append('▶ 요약')
 D.append(f'   {summary} · {task_type}')
