@@ -130,8 +130,51 @@ except Exception:
 # ── 세션 transcript 스캔 (지상진실) ──────────────────────────────────
 # 파일=세션이므로 교차오염 0. 실제 편집파일·위임·게이트블록·사용자정정을 결정론적 추출.
 def scan_transcript(path):
+    def user_text(content):
+        if isinstance(content, str):
+            return content.strip()
+        if isinstance(content, list):
+            parts = []
+            for item in content:
+                if not isinstance(item, dict):
+                    continue
+                if item.get('type') == 'text' and isinstance(item.get('text'), str):
+                    parts.append(item.get('text').strip())
+            return '\n'.join([p for p in parts if p]).strip()
+        return ''
+
+    def one_line(text, limit=80):
+        text = re.sub(r'\s+', ' ', (text or '').strip())
+        if not text:
+            return ''
+        return text[:limit] if len(text) <= limit else text[:limit-1] + '…'
+
+    def is_system_reminder(text):
+        if not text:
+            return True
+        admin_prefixes = (
+            '<task-notification>',
+            '[task-notification]',
+            '[Image: source:',
+            '<system-reminder>',
+            'system-reminder:',
+            'Stop hook feedback:',
+            'Base directory for this skill:',
+            'Check /private/tmp/',
+            '<local-command-caveat>',
+            '<command-name>',
+            '<local-command-stdout>',
+            '검증 영수증',
+        )
+        return (
+            text.startswith(admin_prefixes)
+            or text.startswith('체크인:')
+            or text.startswith('Commander 감독')
+        )
+
     tx = {'edited': [], 'bash': 0, 'deleg': 0, 'web': 0, 'reads': 0,
-          'gate_blocks': 0, 'pushback': [], 'selfcorr': 0, 'unverified': [], 'goal': ''}
+          'gate_blocks': 0, 'pushback': [], 'selfcorr': 0, 'unverified': [],
+          'goal': '', 'goal_first': '', 'goal_last': ''}
     if not path or not os.path.exists(path):
         return None
     try:
@@ -164,14 +207,21 @@ def scan_transcript(path):
                     txt = b.get('text', '')
                     if any(k in txt for k in ('정정합니다', '거짓이었', '오류였', '잘못 보고', '틀렸습니다')): tx['selfcorr'] += 1
                     for u in re.findall(r'\[미검증항목\]\s*([^\n]{4,90})', txt): tx['unverified'].append(u.strip())
-        elif t == 'user' and isinstance(c, str):          # 실제 사용자 입력(문자열)만
-            if '거짓·미검증 보고 차단' in c or 'no-false-report-gate' in c: tx['gate_blocks'] += 1
-            if not tx['goal']: tx['goal'] = c.strip().replace('\n', ' ')[:120]
-            if any(k in c for k in ('틀렸', '거짓', '형편없', '실수 투성', '왜 안', '안되', '제대로')):
-                tx['pushback'].append(c.strip().replace('\n', ' ')[:70])
-        elif t == 'user' and isinstance(c, list):         # tool_result 안의 게이트 피드백
-            blob = json.dumps(c, ensure_ascii=False)
-            if '거짓·미검증 보고 차단' in blob: tx['gate_blocks'] += 1
+        elif t == 'user':
+            utext = user_text(c)
+            if isinstance(c, list):         # tool_result 안의 게이트 피드백
+                blob = json.dumps(c, ensure_ascii=False)
+                if '거짓·미검증 보고 차단' in blob: tx['gate_blocks'] += 1
+            if '거짓·미검증 보고 차단' in utext or 'no-false-report-gate' in utext: tx['gate_blocks'] += 1
+            if utext and not is_system_reminder(utext):
+                if not tx['goal']:
+                    tx['goal'] = utext.replace('\n', ' ')[:120]
+                if not tx['goal_first']:
+                    tx['goal_first'] = one_line(utext)
+                if not (utext.startswith('체크인:') or utext.startswith('Commander 감독')):
+                    tx['goal_last'] = one_line(utext)
+            if any(k in utext for k in ('틀렸', '거짓', '형편없', '실수 투성', '왜 안', '안되', '제대로')):
+                tx['pushback'].append(utext.replace('\n', ' ')[:70])
     tx['edited'] = sorted(set(ed))
     return tx
 
@@ -491,6 +541,14 @@ if dl_entries:
     L.append(f'핵심: {dl_entries[-1][1][:120]}')
 L.append('')
 
+L.append('## ▶ 세션 목표')
+if tx is None:
+    L.append('측정불가')
+else:
+    L.append(f'시작 목표: {tx.get("goal_first") or "측정불가"}')
+    L.append(f'최근 지시: {tx.get("goal_last") or "측정불가"}')
+L.append('')
+
 # ② Before → After (decision-log 근거=이전 문제, 결정=이번 조치)
 L.append('## ② Before → After (변화)')
 if dl_entries or commits:
@@ -643,6 +701,13 @@ def _clip(s, n):
 D = []
 D.append(f'📋 세션 종료 리포트 — {PROJNAME} · {DATE} {time.strftime("%H:%M", time.localtime(now))}')
 D.append('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+D.append('▶ 세션 목표')
+_gf = (tx or {}).get('goal_first', '') if tx else ''
+_gl = (tx or {}).get('goal_last', '') if tx else ''
+D.append(f'   시작 목표: {_clip(_gf, 90)}' if _gf else '   측정불가')
+if _gl:
+    D.append(f'   최근 지시: {_clip(_gl, 90)}')
+D.append('')
 D.append('▶ 요약')
 D.append(f'   {summary} · {task_type}')
 if edited:
