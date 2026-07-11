@@ -22,36 +22,123 @@ _ensure_tool_activity_reporter_hooks(){ # settings.json에 reporter Pre/PostTool
   local pre_cmd='CLAUDE_HOOK_EVENT=PreToolUse bash ~/.claude/hooks/tool-activity-reporter.sh'
   local post_cmd='CLAUDE_HOOK_EVENT=PostToolUse bash ~/.claude/hooks/tool-activity-reporter.sh'
   [ $DRY -eq 1 ] && { log "DRY settings hook 보장: tool-activity-reporter"; return 0; }
-  if ! command -v jq >/dev/null 2>&1; then
-    echo "[fleet-apply] jq 없음: settings.json 훅 등록 보장 불가. 적용 거부."
-    exit 4
-  fi
   mkdir -p "$DEST"
   [ -f "$settings" ] || printf '{}\n' > "$settings"
-  if ! jq empty "$settings" >/dev/null 2>&1; then
+  if command -v jq >/dev/null 2>&1; then
+    if ! jq empty "$settings" >/dev/null 2>&1; then
+      echo "[fleet-apply] settings.json 파싱 실패: $settings. 훅 등록 보장 불가. 적용 거부."
+      exit 5
+    fi
+    if jq -e --arg pre "$pre_cmd" --arg post "$post_cmd" '
+      def has_cmd($event; $cmd): any((.hooks[$event] // [])[]?.hooks[]?; .command == $cmd);
+      has_cmd("PreToolUse"; $pre) and has_cmd("PostToolUse"; $post)
+    ' "$settings" >/dev/null 2>&1; then
+      log "settings hook 보장: tool-activity-reporter 이미 등록됨(skip)"
+      return 0
+    fi
+    backup="$settings.fleet-hook-bak-$(date +%Y%m%d-%H%M%S)"
+    cp "$settings" "$backup"
+    tmp="$(mktemp "${TMPDIR:-/tmp}/fleet-settings.XXXXXX")"
+    if ! jq --arg pre "$pre_cmd" --arg post "$post_cmd" '
+      def has_cmd($event; $cmd): any((.hooks[$event] // [])[]?.hooks[]?; .command == $cmd);
+      def ensure_cmd($event; $cmd):
+        .hooks = (.hooks // {}) |
+        .hooks[$event] = (.hooks[$event] // []) |
+        if has_cmd($event; $cmd) then . else .hooks[$event] += [{"hooks":[{"type":"command","command":$cmd,"timeout":2}]}] end;
+      ensure_cmd("PreToolUse"; $pre) | ensure_cmd("PostToolUse"; $post)
+    ' "$settings" >"$tmp"; then
+      rm -f "$tmp"
+      echo "[fleet-apply] jq 갱신 실패: $settings. 백업=$backup"
+      exit 6
+    fi
+    mv "$tmp" "$settings"
+    log "settings hook 보장: tool-activity-reporter 등록 완료, 백업=$(basename "$backup")"
+    return 0
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "[fleet-apply] jq/python3 없음: settings.json 훅 등록 건너뜀."
+    return 0
+  fi
+  if ! python3 -c 'import json, sys; json.load(open(sys.argv[1]))' "$settings" >/dev/null 2>&1; then
     echo "[fleet-apply] settings.json 파싱 실패: $settings. 훅 등록 보장 불가. 적용 거부."
     exit 5
   fi
-  if jq -e --arg pre "$pre_cmd" --arg post "$post_cmd" '
-    def has_cmd($event; $cmd): any((.hooks[$event] // [])[]?.hooks[]?; .command == $cmd);
-    has_cmd("PreToolUse"; $pre) and has_cmd("PostToolUse"; $post)
-  ' "$settings" >/dev/null 2>&1; then
+  if PRE_CMD="$pre_cmd" POST_CMD="$post_cmd" python3 -c '
+import json
+import os
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as f:
+    data = json.load(f)
+
+def has_cmd(event, cmd):
+    return any(
+        hook.get("command") == cmd
+        for entry in (data.get("hooks", {}) or {}).get(event, [])
+        for hook in (entry.get("hooks", []) if isinstance(entry, dict) else [])
+        if isinstance(hook, dict)
+    )
+
+sys.exit(0 if has_cmd("PreToolUse", os.environ["PRE_CMD"]) and has_cmd("PostToolUse", os.environ["POST_CMD"]) else 1)
+' "$settings"; then
     log "settings hook 보장: tool-activity-reporter 이미 등록됨(skip)"
     return 0
   fi
   backup="$settings.fleet-hook-bak-$(date +%Y%m%d-%H%M%S)"
   cp "$settings" "$backup"
   tmp="$(mktemp "${TMPDIR:-/tmp}/fleet-settings.XXXXXX")"
-  if ! jq --arg pre "$pre_cmd" --arg post "$post_cmd" '
-    def has_cmd($event; $cmd): any((.hooks[$event] // [])[]?.hooks[]?; .command == $cmd);
-    def ensure_cmd($event; $cmd):
-      .hooks = (.hooks // {}) |
-      .hooks[$event] = (.hooks[$event] // []) |
-      if has_cmd($event; $cmd) then . else .hooks[$event] += [{"hooks":[{"type":"command","command":$cmd,"timeout":2}]}] end;
-    ensure_cmd("PreToolUse"; $pre) | ensure_cmd("PostToolUse"; $post)
-  ' "$settings" >"$tmp"; then
+  if ! SETTINGS_PATH="$settings" TMP_PATH="$tmp" PRE_CMD="$pre_cmd" POST_CMD="$post_cmd" python3 -c '
+import json
+import os
+
+settings_path = os.environ["SETTINGS_PATH"]
+tmp_path = os.environ["TMP_PATH"]
+pre_cmd = os.environ["PRE_CMD"]
+post_cmd = os.environ["POST_CMD"]
+
+with open(settings_path, encoding="utf-8") as f:
+    data = json.load(f)
+
+def has_cmd(event, cmd):
+    hooks_root = data.get("hooks")
+    if not isinstance(hooks_root, dict):
+        return False
+    entries = hooks_root.get(event, [])
+    if not isinstance(entries, list):
+        return False
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        hooks = entry.get("hooks", [])
+        if not isinstance(hooks, list):
+            continue
+        for hook in hooks:
+            if isinstance(hook, dict) and hook.get("command") == cmd:
+                return True
+    return False
+
+hooks_root = data.get("hooks")
+if not isinstance(hooks_root, dict):
+    hooks_root = {}
+    data["hooks"] = hooks_root
+
+for event, cmd in (("PreToolUse", pre_cmd), ("PostToolUse", post_cmd)):
+    entries = hooks_root.get(event)
+    if not isinstance(entries, list):
+        entries = []
+        hooks_root[event] = entries
+    if not has_cmd(event, cmd):
+        entries.append({"hooks": [{"type": "command", "command": cmd, "timeout": 2}]})
+
+with open(tmp_path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+
+with open(tmp_path, encoding="utf-8") as f:
+    json.load(f)
+'; then
     rm -f "$tmp"
-    echo "[fleet-apply] jq 갱신 실패: $settings. 백업=$backup"
+    echo "[fleet-apply] python3 갱신 실패: $settings. 백업=$backup"
     exit 6
   fi
   mv "$tmp" "$settings"
