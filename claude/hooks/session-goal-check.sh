@@ -115,18 +115,13 @@ if result['total'] == 0:
     result['verdict'] = 'NO_GOALS'
     print(json.dumps(result, ensure_ascii=False)); sys.exit(3)
 
-# Gap (advisor-stop L2와 동일 산식)
+# Gap = 목표 완료율 (advisor-stop L2와 동일: 완료율/보고품질 분리, 상한 없음)
 last_promoted = result['final_receipt'] and result['resolved'] < result['total']
 eff = result['resolved'] + (1 if last_promoted else 0)
-raw = round(eff / result['total'] * 100)
-cap = 100
-if gb > 0: cap = min(cap, 60)
-if pb > 0: cap = min(cap, 70)
-if unv > 0: cap = min(cap, 90)
-gap = min(raw, cap)
+gap = round(eff / result['total'] * 100)
 result['gap'] = gap
-result['capped'] = (cap < raw)
-result['raw'] = raw; result['cap'] = cap; result['eff_resolved'] = eff
+result['quality_issues'] = {'gate_blocks': gb, 'pushback': pb, 'unverified': unv}
+result['eff_resolved'] = eff
 
 # 판정: 달성가능 종료조건 = 모든 목표 ✅해결(마지막턴 영수증 승격 포함). Gap>=THRESHOLD 보조.
 all_resolved = (eff >= result['total'])
@@ -137,9 +132,10 @@ def e(s): sys.stderr.write(s + '\n')
 e('━━━ 세션 목표 체크 ━━━')
 for i, g in enumerate(result['goals'], 1):
     e(f'  {g["status"]}  {i}. {g["summary"]}')
-capnote = f' (raw {raw}%→상한 {cap}% [게이트{gb}/지적{pb}/미검증{unv}])' if result['capped'] else ''
-e(f'Gap: {gap}% (목표 {eff}/{result["total"]} 해결){capnote}')
-e(f'판정: {result["verdict"]}' + (' — 모든 목표 해결(달성가능 상한 도달)' if all_resolved and result['capped']
+q = [x for x in ([f'게이트{gb}' if gb else '', f'지적{pb}' if pb else '', f'미검증{unv}' if unv else '']) if x]
+qnote = f' · ⚠️보고품질 이슈({", ".join(q)}, 완료율과 별도)' if q else ''
+e(f'Gap(완료율): {gap}% (목표 {eff}/{result["total"]} 해결){qnote}')
+e(f'판정: {result["verdict"]}' + (' — 모든 목표 ✅해결' if all_resolved
    else ' — 진행중/미완 목표 존재' if result['verdict']=='INCOMPLETE' else ''))
 
 print(json.dumps(result, ensure_ascii=False))

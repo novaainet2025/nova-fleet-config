@@ -541,30 +541,28 @@ if task_type == 'new_feature' and done_stages:
     gap_block = f'달성률 **{pct}%** ({len(done_stages)}/6 파이프라인 단계) · 기준 95% → **{gate}**'
     if verif_sig: gap_block += f' · {verif_sig}'
 elif tx is not None and tx.get('goals_total', 0) >= 1:
-    # L2 목표기반 — goal-timeline 실측 (T4 base + T1 grounded). "측정불가" 대체.
+    # L2 목표기반 — Gap = 목표 완료율(완료율과 보고품질을 분리, 2026-07-11 재설계).
+    # 완료율에 상한을 씌우면 게이트 발화 세션은 영원히 95% 미달 → "달성까지 루프"가
+    # 구조적으로 종료 불가(자기모순). 따라서 완료율은 순수 목표해결 기준, 보고품질은 별도 플래그.
     total = tx['goals_total']
     resolved = tx['goals_resolved']
     # 마지막 목표(Stop 시점 항상 진행중): 최종 턴에 검증영수증 있으면 완료로 승격
     last_promoted = bool(tx.get('final_receipt')) and resolved < total
     eff_resolved = resolved + (1 if last_promoted else 0)
-    raw = int(round(eff_resolved / total * 100))
-    # T1 grounding 상한 — 부정 지상진실이면 완료 주장 불가
-    cap = 100
-    cap_reason = []
-    if tx['gate_blocks'] > 0:
-        cap = min(cap, 60); cap_reason.append(f'거짓보고게이트 {tx["gate_blocks"]}회→상한60')
-    if tx['pushback']:
-        cap = min(cap, 70); cap_reason.append(f'사용자지적 {len(tx["pushback"])}회→상한70')
-    if tx['unverified']:
-        cap = min(cap, 90); cap_reason.append(f'미검증항목 {len(tx["unverified"])}건→상한90')
-    pct = min(raw, cap)
+    pct = int(round(eff_resolved / total * 100))   # 완료율 = 목표해결/전체 (상한 없음)
     remaining = total - eff_resolved
     gate = '통과 (≥95%)' if pct >= 95 else '미통과 (<95%) → 미완료 목표 잔존'
     detail = f'목표 {eff_resolved}/{total} 해결'
     if remaining > 0: detail += f', {remaining}건 진행중/미완'
     gap_block = f'달성률 **{pct}%** ({detail}) · 기준 95% → **{gate}**'
-    if pct < raw: gap_block += f' · raw {raw}%→상한 {cap}% ({"; ".join(cap_reason)})'
-    gap_block += f' · {verif_sig} · [근거: 목표추적{"+영수증" if tx.get("final_receipt") else ""}·T1grounded]'
+    # 보고품질(report-integrity) — 완료율을 상한하지 않되 별도 명시(숨기지 않음)
+    quality = []
+    if tx['gate_blocks']: quality.append(f'게이트차단 {tx["gate_blocks"]}회')
+    if tx['pushback']: quality.append(f'사용자지적 {len(tx["pushback"])}회')
+    if tx['unverified']: quality.append(f'미검증항목 {len(tx["unverified"])}건')
+    gap_block += (f' · ⚠️보고품질 이슈: {", ".join(quality)} (완료율과 별도 축)' if quality
+                  else ' · ✅보고품질 이슈 없음')
+    gap_block += f' · [근거: 목표추적{"+영수증" if tx.get("final_receipt") else ""}]'
 elif tx is not None:
     # L3 요청없음 — heartbeat/알림 세션 (측정할 목표 자체가 없음)
     act = (f'편집 {len(tx["edited"])}파일 · 실행 {tx["bash"]}회 · 위임 {tx["deleg"]}건 · '
