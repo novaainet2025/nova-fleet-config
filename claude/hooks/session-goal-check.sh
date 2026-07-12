@@ -109,7 +109,10 @@ if cur is not None:
     result['goals'][cur]['status'] = classify('\n'.join(chunks), is_last=True)
 
 final_text = '\n'.join(chunks)
-result['final_receipt'] = ('검증 영수증' in final_text)
+# final_receipt 는 실제 '## 검증 영수증' 헤더로만 판정 (2026-07-12 fix).
+# 산문에서 '검증 영수증'을 언급(예: "이 턴은 검증 영수증이 없습니다")해도 오탐해
+# 질문/잡담 턴에 autoloop 이 오발화하던 문제 차단.
+result['final_receipt'] = bool(re.search(r'(?m)^\s*##\s*검증\s*영수증', final_text))
 result['total'] = len(result['goals'])
 result['resolved'] = sum(1 for g in result['goals'] if g['status'] == '✅해결')
 result['gate_blocks'] = gb; result['pushback'] = pb; result['unverified'] = unv
@@ -159,7 +162,11 @@ e(f'판정: {result["verdict"]}' + (' — 모든 목표 ✅해결' if all_resolv
 
 # ▶ 다음 단계 (체크 강화) — INCOMPLETE면 미완 목표를 자동실행 대상으로 명시.
 # 루프는 이 목록이 비면(모두 ✅) COMPLETE로 종료 → "다음 단계 없을 때까지 진행" 계약 충족.
-_next = [g['summary'] for g in result['goals'] if g['status'] in ('🔄진행중', '⏳대기')]
+# [2026-07-12 fix] 현재(마지막) 턴 cur 은 "지금 답변 중인 프롬프트"라 항상 🔄진행중 →
+#   next_steps 에 넣으면 "다음 단계 있는데 왜 진행 안하지?" 착시(사용자 반복 지적). cur 제외:
+#   실제 '다음 단계' = 이전에 남겨둔 미완 목표만. (verdict 계산은 불변 — 표시/자동실행 대상만 정정)
+_next = [g['summary'] for i, g in enumerate(result['goals'])
+         if g['status'] in ('🔄진행중', '⏳대기') and i != cur]
 result['next_steps'] = _next
 if result['verdict'] == 'INCOMPLETE' and _next:
     e('▶ 다음 단계 (자동 실행 대상):')
