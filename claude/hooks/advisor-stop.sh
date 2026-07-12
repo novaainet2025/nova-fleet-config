@@ -32,6 +32,12 @@ except Exception:
 # 짧게 대기해 최종 턴 반영 보장. autoloop stale-read 수정과 동일 원리.
 [ -n "$NCO_TRANSCRIPT" ] && [ -f "$NCO_TRANSCRIPT" ] && sleep 0.7
 
+# [2026-07-12] 단일 진실원 통일 — session-goal-check(autoloop 코어)의 gap/verdict/next_steps를
+# 리포트가 그대로 참조해 숫자·판정을 완전 일치시킨다(두 훅 독립계산 편차·임계값차 제거).
+if [ -n "$NCO_TRANSCRIPT" ] && [ -f "$NCO_TRANSCRIPT" ] && [ -f "$HOME/.claude/hooks/session-goal-check.sh" ]; then
+  export NCO_SGC_JSON="$(CLAUDE_PROJECT_DIR="$PROJECT_DIR" bash "$HOME/.claude/hooks/session-goal-check.sh" "$NCO_TRANSCRIPT" 2>/dev/null | tail -1)"
+fi
+
 # ── 세션 ID 해석 (SID = track 파일 스코프 앵커) ──────────────────
 _SID="${NCO_SESSION_ID:-}"
 if [ -z "$_SID" ]; then
@@ -399,6 +405,19 @@ def scan_transcript(path):
 
 tx = scan_transcript(os.environ.get('NCO_TRANSCRIPT', ''))
 
+# [2026-07-12] 단일 진실원: session-goal-check(코어) JSON을 파싱해 gap/verdict/next_steps를 그대로 참조.
+# 리포트의 달성률·세션상태·다음단계가 코어(autoloop)와 숫자·판정 완전 일치하도록 통일.
+_sgc = {}
+try:
+    _sgc = json.loads(os.environ.get('NCO_SGC_JSON', '') or '{}')
+    if not isinstance(_sgc, dict): _sgc = {}
+except Exception:
+    _sgc = {}
+# 유효(목표 있는 판정)일 때만 사용. NO_GOALS/미확보(verdict 없음)면 기존 로직 폴백.
+_sgc_ok = _sgc.get('verdict') in ('COMPLETE', 'INCOMPLETE') and _sgc.get('gap') is not None
+_sgc_complete = (_sgc.get('verdict') == 'COMPLETE') if _sgc_ok else None
+_sgc_next = (_sgc.get('next_steps') or []) if _sgc_ok else None
+
 # ── 런타임/외부 산출물 필터 — NCO 백엔드 벡터DB(*.hnsw)·redis(*.rdb)·로그·바이너리 등은
 #    동시 세션/백엔드 프로세스가 쓰므로 "내 작업"이 아니다. mtime만으로 귀속하면 오염(예: codex.hnsw). (2026-07-10)
 NOISE_RE = re.compile(
@@ -583,12 +602,19 @@ elif tx is not None and tx.get('goals_total', 0) >= 1:
             if _it.get('status') == '🔄진행중':
                 _it['status'] = '✅해결'
                 break
-    pct = int(round(eff_resolved / total * 100))   # 완료율 = 목표해결/전체 (상한 없음)
-    remaining = total - eff_resolved
-    gate = '통과 (≥95%)' if pct >= 95 else '미통과 (<95%) → 미완료 목표 잔존'
+    # [2026-07-12] 단일 진실원: 코어(session-goal-check)가 유효하면 그 gap/verdict로 통일(숫자·판정 일치).
+    if _sgc_ok:
+        pct = int(_sgc['gap']); total = _sgc.get('total', total)
+        eff_resolved = _sgc.get('eff_resolved', eff_resolved)
+        remaining = max(0, total - eff_resolved)
+        gate = '통과 (완료)' if _sgc_complete else '미통과 → 미완료 목표 잔존'
+    else:
+        pct = int(round(eff_resolved / total * 100))   # 완료율 = 목표해결/전체 (상한 없음)
+        remaining = total - eff_resolved
+        gate = '통과 (≥95%)' if pct >= 95 else '미통과 (<95%) → 미완료 목표 잔존'
     detail = f'목표 {eff_resolved}/{total} 해결'
     if remaining > 0: detail += f', {remaining}건 진행중/미완'
-    gap_block = f'달성률 **{pct}%** ({detail}) · 기준 95% → **{gate}**'
+    gap_block = f'달성률 **{pct}%** ({detail}) · 판정 → **{gate}**'
     # 보고품질(report-integrity) — 완료율을 상한하지 않되 별도 명시(숨기지 않음)
     quality = []
     if tx['gate_blocks']: quality.append(f'게이트차단 {tx["gate_blocks"]}회')
@@ -758,12 +784,17 @@ else:
         L.append('요청 타임라인:')
         for item in timeline:
             L.append(f'- [{item.get("time_display", item["time"])}] {item["status"]} {item["summary"]}')
-        # 세션 상태 명시 — 사용자가 완료/진행중을 한눈에 판단 (표시=판정 일치)
-        _open = [it for it in timeline if it.get('status') == '🔄진행중']
-        if _open:
-            L.append(f'▶ 세션 상태: 🔄 진행중 — 미완 {len(_open)}건 (자동 루프 계속 대상)')
+        # 세션 상태 — 단일 진실원(코어 verdict/next_steps)로 판정 (2026-07-12)
+        if _sgc_complete is True:
+            L.append('▶ 세션 상태: ✅ 완료 — 자동실행 대상 없음')
+        elif _sgc_complete is False:
+            _ln = len(_sgc_next)
+            L.append(f'▶ 세션 상태: 🔄 진행중 — 미완 {_ln}건 (자동 루프 계속 대상)' if _ln > 0
+                     else '▶ 세션 상태: 🔄 진행중 — 현재 작업 미완결 (자동 루프 계속 대상)')
         else:
-            L.append('▶ 세션 상태: ✅ 완료 — 모든 목표 해결')
+            _open = [it for it in timeline if it.get('status') == '🔄진행중']
+            L.append(f'▶ 세션 상태: 🔄 진행중 — 미완 {len(_open)}건 (자동 루프 계속 대상)' if _open
+                     else '▶ 세션 상태: ✅ 완료 — 모든 목표 해결')
 L.append('')
 
 # ② Before → After (decision-log 근거=이전 문제, 결정=이번 조치)
@@ -823,7 +854,18 @@ def _actionable_unv():
 _unv_act = _actionable_unv()
 L.append('## ⑥ ➡️ 다음 단계 가이드')
 _next = []
-if pending and backlog_fresh:
+if _sgc_ok:
+    # 단일 진실원: '다음 단계' = 코어(autoloop) 자동실행 대상 = 세션 미완 목표(현재턴 제외).
+    if _sgc_complete:
+        _next.append('- 없음 — 자동실행 대상 없음 (세션 목표 완료)')
+    elif _sgc_next:
+        for s in _sgc_next[:5]:
+            _next.append(f'- [자동실행] {s[:100]}')
+    else:
+        _next.append('- [자동실행] 현재 작업 완결까지 진행')
+    if pending:
+        _next.append(f'- [참고] 감독관 백로그 {len(pending)}건 (자동실행 아님, backlog.md)')
+elif pending and backlog_fresh:
     for i, p in enumerate(pending[:5]):
         pri = 'High' if i < 2 else 'Med'
         safe = '🟡확인필요' if any(k in p for k in ['배포','재시작','push','deploy','활성화']) else '🟢자동가능'
@@ -944,12 +986,17 @@ if _gt:
             D.append(f'   [{item_time}] {item["status"]} {_clip(item["summary"], 60)}')
         else:
             D.append(f'   {_clip(item["summary"], 60)}')
-    # 세션 상태 명시 — 표시(타임라인)와 판정(Gap)이 일치하도록 완료/진행중을 한 줄로 (2026-07-12)
-    _open_d = [it for it in _gt if it.get('status') == '🔄진행중']
-    if _open_d:
-        D.append(f'   ▶ 세션 상태: 🔄 진행중 — 미완 {len(_open_d)}건 (자동 루프 계속 대상)')
+    # 세션 상태 — 단일 진실원(코어 verdict/next_steps)로 판정해 autoloop·달성률과 완전 일치 (2026-07-12)
+    if _sgc_complete is True:
+        D.append('   ▶ 세션 상태: ✅ 완료 — 자동실행 대상 없음')
+    elif _sgc_complete is False:
+        _n = len(_sgc_next)
+        D.append(f'   ▶ 세션 상태: 🔄 진행중 — 미완 {_n}건 (자동 루프 계속 대상)' if _n > 0
+                 else '   ▶ 세션 상태: 🔄 진행중 — 현재 작업 미완결 (자동 루프 계속 대상)')
     else:
-        D.append('   ▶ 세션 상태: ✅ 완료 — 모든 목표 해결')
+        _open_d = [it for it in _gt if it.get('status') == '🔄진행중']
+        D.append(f'   ▶ 세션 상태: 🔄 진행중 — 미완 {len(_open_d)}건 (자동 루프 계속 대상)' if _open_d
+                 else '   ▶ 세션 상태: ✅ 완료 — 모든 목표 해결')
 D.append('')
 D.append('▶ 요약')
 D.append(f'   {summary} · {task_type}')
@@ -971,16 +1018,29 @@ for x in learn[:3]:
     D.append(f'   · {_clip(x, 70)}')
 D.append('')
 D.append('▶ 다음 단계')
-if pending and backlog_fresh:
-    for p in pending[:3]:
-        D.append(f'   · [High] {_clip(p,58)}')
-elif tx is not None and _unv_act:
-    for u in _unv_act[-2:]:
-        D.append(f'   · [High] 미검증 종결: {_clip(u,54)}')
-elif pending:
-    D.append(f'   · 백로그 미변경 — 직전과 동일 {len(pending)}건 (backlog.md 참조)')
+if _sgc_ok:
+    # 단일 진실원: '다음 단계' = 코어(autoloop)가 자동실행하는 대상 = 세션 미완 목표(현재턴 제외).
+    if _sgc_complete:
+        D.append('   · 없음 — 자동실행 대상 없음 (세션 목표 완료)')
+    elif _sgc_next:
+        for s in _sgc_next[:3]:
+            D.append(f'   · [자동실행] {_clip(s,54)}')
+    else:
+        D.append('   · [자동실행] 현재 작업 완결까지 진행')
+    if pending:  # 감독관 백로그는 별도 워크스트림 — 이 세션 자동실행 대상 아님(참고)
+        D.append(f'   · [참고] 감독관 백로그 {len(pending)}건 (자동실행 아님, backlog.md)')
 else:
-    D.append('   · [High] 신규 지시 대기')
+    # 폴백 (코어 미확보) — 기존 로직
+    if pending and backlog_fresh:
+        for p in pending[:3]:
+            D.append(f'   · [High] {_clip(p,58)}')
+    elif tx is not None and _unv_act:
+        for u in _unv_act[-2:]:
+            D.append(f'   · [High] 미검증 종결: {_clip(u,54)}')
+    elif pending:
+        D.append(f'   · [참고] 감독관 백로그 {len(pending)}건 (자동실행 아님, backlog.md)')
+    else:
+        D.append('   · [High] 신규 지시 대기')
 D.append('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 D.append(f'📄 전문: {note_file}')
 out('\n'.join(D))
