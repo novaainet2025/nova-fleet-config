@@ -326,7 +326,12 @@ def scan_transcript(path):
                     elif n == 'Bash':
                         tx['bash'] += 1
                         cmd = str(inp.get('command', ''))
-                        if any(k in cmd for k in ('/api/task', '/api/parallel', '/api/conductor', 'nco_')): tx['deleg'] += 1
+                        # [2026-07-12 버그1 fix] 실제 태스크 '발주(POST)'만 위임으로 집계.
+                        # 기존엔 cmd에 '/api/task' 문자열만 있어도 +1 → 검증/조회 GET curl(/api/tasks?limit=..)까지
+                        # 위임으로 오집계 → phantom '위임 결과 수집' next-step 유발(표시모순 재발원인, claude-2 T1).
+                        _is_post = ('-X POST' in cmd or '-XPOST' in cmd or '--data' in cmd
+                                    or bool(re.search(r'(?:^|\s)-d\b', cmd)))
+                        if _is_post and any(k in cmd for k in ('/api/task', '/api/parallel', '/api/conductor')): tx['deleg'] += 1
                     elif n in ('WebSearch', 'WebFetch'): tx['web'] += 1
                     elif n == 'Read': tx['reads'] += 1
                     elif n == 'Skill' and 'nco' in str(inp.get('skill', '')): tx['deleg'] += 1
@@ -823,11 +828,9 @@ if pending and backlog_fresh:
         pri = 'High' if i < 2 else 'Med'
         safe = '🟡확인필요' if any(k in p for k in ['배포','재시작','push','deploy','활성화']) else '🟢자동가능'
         _next.append(f'- [{pri}] {p[:100]}  ({safe})')
-elif tx is not None and (_unv_act or (tx['deleg'] and tx['gate_blocks'])):
+elif tx is not None and _unv_act:
     for u in _unv_act[-4:]:
         _next.append(f'- [High] 미검증 항목 종결: {u[:90]}  (🟡확인필요)')
-    if tx['deleg']:
-        _next.append(f'- [Med] 위임 {tx["deleg"]}건 결과 수집·T1 대조 (🟢자동가능)')
 elif pending:
     _next.append(f'- [Med] 백로그 미변경 — 직전과 동일 {len(pending)}건 (전문: .nco-supervisor/backlog.md)')
 else:
@@ -971,11 +974,9 @@ D.append('▶ 다음 단계')
 if pending and backlog_fresh:
     for p in pending[:3]:
         D.append(f'   · [High] {_clip(p,58)}')
-elif tx is not None and (_unv_act or (tx['deleg'] and tx['gate_blocks'])):
+elif tx is not None and _unv_act:
     for u in _unv_act[-2:]:
         D.append(f'   · [High] 미검증 종결: {_clip(u,54)}')
-    if tx['deleg']:
-        D.append(f'   · [Med] 위임 {tx["deleg"]}건 결과 수집·T1 대조')
 elif pending:
     D.append(f'   · 백로그 미변경 — 직전과 동일 {len(pending)}건 (backlog.md 참조)')
 else:
