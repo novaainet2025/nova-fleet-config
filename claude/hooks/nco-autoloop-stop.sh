@@ -34,6 +34,14 @@ PROJDIR="${CLAUDE_PROJECT_DIR:-/Users/nova-ai/project}"
 JSON=$(CLAUDE_PROJECT_DIR="$PROJDIR" bash "$GOAL_CHECK" "$TX" 2>/dev/null)
 ec=$?
 
+# stale-read 방지(레이스): Stop 훅이 직전 완료 턴([Gap]100 등)이 transcript에 flush되기 전에
+# 읽으면 미완으로 오판해 헛돎. INCOMPLETE면 잠깐 대기 후 1회 재확인 — 완료 턴이 반영되면 종료.
+if [ "$ec" = "2" ]; then
+    sleep 0.7
+    JSON=$(CLAUDE_PROJECT_DIR="$PROJDIR" bash "$GOAL_CHECK" "$TX" 2>/dev/null)
+    ec=$?
+fi
+
 # 코어가 COMPLETE(0)/NO_GOALS·미확보(3) → 종료, 상태 리셋
 if [ "$ec" != "2" ]; then
     rm -f "$STATE"
