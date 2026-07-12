@@ -273,13 +273,14 @@ except Exception as e:
 st=data.setdefault('hooks',{}).setdefault('Stop',[])
 if not isinstance(st, list):
     print('[fleet-apply] Stop 형식 이상 — autoloop 등록 skip'); sys.exit(0)
-def has(c):
+# basename 매칭 — 절대경로/틸데 등 경로형식 차이로 중복 등록되지 않도록 (2026-07-12)
+def has():
     for g in st:
         if not isinstance(g, dict): continue
         for h in (g.get('hooks') or []):
-            if isinstance(h, dict) and h.get('command')==c: return True
+            if isinstance(h, dict) and 'nco-autoloop-stop' in (h.get('command') or ''): return True
     return False
-if has(cmd):
+if has():
     print('[fleet-apply] settings hook 보장: nco-autoloop-stop 이미 등록됨(skip)'); sys.exit(0)
 try:
     shutil.copy(f, f+'.fleet-hook-bak-'+time.strftime('%Y%m%d-%H%M%S'))
