@@ -254,6 +254,45 @@ done
 for f in "$ROOT"/claude/hooks/*.py; do [ -f "$f" ] || continue; n="$(basename "$f")"
   if [ $DRY -eq 1 ]; then log "DRY py-hook: $n"; else sub <"$f" >"$DEST/hooks/$n"; chmod +x "$DEST/hooks/$n"; log "py-hook: $n"; fi; done
 _ensure_tool_activity_reporter_hooks
+
+# [2026-07-12] autoloop Stop훅 멱등 배선 — '다음 단계 자동 실행' 기능을 전 디바이스에 fleet-native 전파.
+# apply.sh는 훅 파일만 sync하고 settings는 머지 안 하므로, 이 함수가 settings.json Stop 배열에
+# nco-autoloop-stop.sh를 멱등 등록(백업+파싱가드+has_cmd). 이미 있으면 skip. 파싱 실패 시 안전 skip.
+_ensure_autoloop_stop_hook(){
+  local settings="$DEST/settings.json" cmd='bash ~/.claude/hooks/nco-autoloop-stop.sh'
+  [ $DRY -eq 1 ] && { log "DRY settings hook 보장: nco-autoloop-stop"; return 0; }
+  mkdir -p "$DEST"; [ -f "$settings" ] || printf '{}\n' > "$settings"
+  command -v python3 >/dev/null 2>&1 || { echo "[fleet-apply] python3 없음: autoloop 훅 등록 건너뜀."; return 0; }
+  SET_FILE="$settings" AL_CMD="$cmd" python3 - <<'PY'
+import json, os, sys, time, shutil
+f=os.environ['SET_FILE']; cmd=os.environ['AL_CMD']
+try:
+    data=json.load(open(f, encoding='utf-8'))
+except Exception as e:
+    print('[fleet-apply] settings.json 파싱 실패 — autoloop 등록 거부(안전 skip):', e); sys.exit(0)
+st=data.setdefault('hooks',{}).setdefault('Stop',[])
+if not isinstance(st, list):
+    print('[fleet-apply] Stop 형식 이상 — autoloop 등록 skip'); sys.exit(0)
+def has(c):
+    for g in st:
+        if not isinstance(g, dict): continue
+        for h in (g.get('hooks') or []):
+            if isinstance(h, dict) and h.get('command')==c: return True
+    return False
+if has(cmd):
+    print('[fleet-apply] settings hook 보장: nco-autoloop-stop 이미 등록됨(skip)'); sys.exit(0)
+try:
+    shutil.copy(f, f+'.fleet-hook-bak-'+time.strftime('%Y%m%d-%H%M%S'))
+    if not st: st.append({'hooks':[]})
+    if not isinstance(st[0].get('hooks'), list): st[0]['hooks']=[]
+    st[0]['hooks'].append({'type':'command','command':cmd,'timeout':20,'statusMessage':'AUTO-LOOP: 다음 단계 자동 실행 판정...'})
+    json.dump(data, open(f,'w',encoding='utf-8'), ensure_ascii=False, indent=2)
+    print('[fleet-apply] settings hook 보장: nco-autoloop-stop 등록 완료(백업됨)')
+except Exception as e:
+    print('[fleet-apply] autoloop 등록 실패(무시):', e)
+PY
+}
+_ensure_autoloop_stop_hook
 # 패처 실행 — inter-session plugin cache(client.py/shared.py)에 NCO 패치 재적용(멱등)
 if [ $DRY -eq 0 ] && [ -f "$DEST/hooks/patch-inter-session.py" ]; then
   python3 "$DEST/hooks/patch-inter-session.py" >/dev/null 2>&1 && log "patch-inter-session.py 실행(plugin cache 패치 적용)" || log "patch-inter-session.py 실행 실패(무시 — 다음 SessionStart 재시도)"
