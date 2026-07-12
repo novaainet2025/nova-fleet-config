@@ -329,7 +329,10 @@ def scan_transcript(path):
                     txt = b.get('text', '')
                     assistant_chunks.append(txt)
                     if any(k in txt for k in ('정정합니다', '거짓이었', '오류였', '잘못 보고', '틀렸습니다')): tx['selfcorr'] += 1
-                    for u in re.findall(r'\[미검증항목\]\s*([^\n]{4,90})', txt): tx['unverified'].append(u.strip())
+                    # 영수증 필드 줄('- [미검증항목] …')에만 앵커(산문 오탐 방지) + 최신 영수증만 반영
+                    # (과거 턴의 이미 해결된 미검증항목이 '다음 단계'로 재노출되던 문제 수정)
+                    _unv_this = re.findall(r'(?m)^\s*-\s*\[미검증항목\]\s*([^\n]{2,90})', txt)
+                    if _unv_this: tx['unverified'] = [u.strip() for u in _unv_this]
         elif t == 'user':
             utext = user_text(c)
             if isinstance(c, list):         # tool_result 안의 게이트 피드백
@@ -796,6 +799,18 @@ L.append(gap_block)
 L.append('')
 
 # ⑥ 다음 단계 가이드 — ①감독관 backlog(fresh) ②이번 세션 미검증/미수집(transcript) ③신규대기
+# [2026-07-12] '다음 단계'는 실행 가능한 미검증 항목만 표시 — 이미완료/사용자대기(재시작)/선택적/
+# 관찰완료 같은 비실행 phantom을 누적 노출하던 문제 수정(사용자 지적: "다음 단계 있는데 왜 안 하냐").
+_NONACT = ('없음', '재시작', '선택적', '별개', '이미 ', '관찰', '불가', 'e2e', 'end-to-end', '사용자')
+def _actionable_unv():
+    seen = set(); out = []
+    for u in (tx['unverified'] if tx is not None else []):
+        uu = (u or '').strip()
+        if not uu or any(m in uu for m in _NONACT) or uu in seen:
+            continue
+        seen.add(uu); out.append(uu)
+    return out
+_unv_act = _actionable_unv()
 L.append('## ⑥ ➡️ 다음 단계 가이드')
 _next = []
 if pending and backlog_fresh:
@@ -803,8 +818,8 @@ if pending and backlog_fresh:
         pri = 'High' if i < 2 else 'Med'
         safe = '🟡확인필요' if any(k in p for k in ['배포','재시작','push','deploy','활성화']) else '🟢자동가능'
         _next.append(f'- [{pri}] {p[:100]}  ({safe})')
-elif tx is not None and (tx['unverified'] or (tx['deleg'] and tx['gate_blocks'])):
-    for u in tx['unverified'][-4:]:
+elif tx is not None and (_unv_act or (tx['deleg'] and tx['gate_blocks'])):
+    for u in _unv_act[-4:]:
         _next.append(f'- [High] 미검증 항목 종결: {u[:90]}  (🟡확인필요)')
     if tx['deleg']:
         _next.append(f'- [Med] 위임 {tx["deleg"]}건 결과 수집·T1 대조 (🟢자동가능)')
@@ -883,7 +898,7 @@ for rl in rules[:2]:
     if not any(rl[:40] in c for c in carry):
         carry.append(f'- [학습] {rl[:110]}')
 if tx is not None:
-    for u in tx['unverified'][-2:]:
+    for u in _unv_act[-2:]:
         carry.append(f'- [다음] 미검증 종결: {u[:100]}')
 for p in pending[:1]:
     carry.append(f'- [다음] {p[:110]}')
@@ -951,8 +966,8 @@ D.append('▶ 다음 단계')
 if pending and backlog_fresh:
     for p in pending[:3]:
         D.append(f'   · [High] {_clip(p,58)}')
-elif tx is not None and (tx['unverified'] or (tx['deleg'] and tx['gate_blocks'])):
-    for u in tx['unverified'][-2:]:
+elif tx is not None and (_unv_act or (tx['deleg'] and tx['gate_blocks'])):
+    for u in _unv_act[-2:]:
         D.append(f'   · [High] 미검증 종결: {_clip(u,54)}')
     if tx['deleg']:
         D.append(f'   · [Med] 위임 {tx["deleg"]}건 결과 수집·T1 대조')
