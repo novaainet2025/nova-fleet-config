@@ -45,7 +45,9 @@ def is_reminder(t):
            'system-reminder:','Stop hook feedback:','[AUTO-LOOP]',
            # 루프 machinery 자체는 목표 아님 — 자기 프롬프트를 새 목표로 세어 종료불가(self-perpetuate)하던 결함 차단
            '# /loop', '/loop ', 'bash ~/.claude/hooks/session-goal-check',
-           'bash $HOME/.claude/hooks/session-goal-check')
+           'bash $HOME/.claude/hooks/session-goal-check',
+           # ScheduleWakeup 감독/루프 프롬프트도 machinery — 목표로 오카운트되어 autoloop 이중구동 방지
+           '[FLEET-WATCHDOG', '[BABYSIT', '[AUTONOMOUS-LOOP')
     return t.startswith(adm)
 
 RECEIPT = ('검증 영수증',)
