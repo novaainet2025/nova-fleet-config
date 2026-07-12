@@ -163,6 +163,19 @@ for t in tool_uses:
 # 시각 증거 (screenshot 파일 언급, localhost 응답, http://)
 visual_evidence = bool(re.search(r'(screenshot|스크린샷|localhost:|http://127\.|http://localhost)', full_text + ' '.join(tool_results), re.IGNORECASE))
 
+# [G6 2026-07-12] 실질검사: '커밋 X를 push했다' 긍정 주장의 hash 추출 → 게이트가 origin 실측 대조.
+# 부정("미push","로컬만","push 안/전/못") 문맥은 제외(정직한 미push 보고를 오차단하지 않도록).
+push_claim_hashes = []
+for _m in re.finditer(r'\b([0-9a-f]{7,40})\b', full_text):
+    _h = _m.group(1)
+    _ctx = full_text[max(0, _m.start()-70):_m.end()+70]
+    if not re.search(r'push|푸시', _ctx, re.IGNORECASE):
+        continue
+    if re.search(r'(미\s*push|안\s*push|못\s*push|push\s*(안|못|전|하지|안함|안됨)|로컬만|미\s*푸시|푸시\s*(안|못|전)|미반영|unpush|not\s*push)', _ctx, re.IGNORECASE):
+        continue  # 부정 문맥 = 정직한 '미push' → 검사 대상 아님
+    push_claim_hashes.append(_h)
+push_claim_hashes = sorted(set(push_claim_hashes))
+
 # 최종 분석 결과
 result = {
     'edits': edits_this_turn,
@@ -172,6 +185,7 @@ result = {
     'receipt_fields_ok': receipt_fields_ok,
     'ui_files': ui_files,
     'visual_evidence': visual_evidence,
+    'push_claim_hashes': push_claim_hashes,
     'asst_text_len': len(full_text),
 }
 print(json.dumps(result, ensure_ascii=False))
@@ -252,6 +266,26 @@ if [ -f "$MEM_FILE" ]; then
         echo "[G5] feedback_no_false_reports.md 해시 변경 감지 (정상 업데이트일 수 있음)" >&2
     fi
     echo "$CUR_HASH" > "$HASH_FILE" 2>/dev/null
+fi
+
+# ─── G6: PushClaimVerify (실질검사 — 형식 아닌 실제 ground truth 대조) ──────
+# 'push했다' 긍정 주장의 커밋 hash를 실제 origin에 있는지 대조. fail-open:
+# hash가 알려진 커밋(known)이고 origin에 없을 때만 차단 → 거짓 push 주장 차단.
+# 정직한 '미push' 보고는 python이 부정문맥 제외로 애초에 push_claim_hashes에 안 넣음.
+PUSH_HASHES=$(echo "$ANALYSIS" | python3 -c "import json,sys;print(' '.join(json.load(sys.stdin).get('push_claim_hashes',[])))" 2>/dev/null)
+if [ -n "$PUSH_HASHES" ]; then
+    for _h in $PUSH_HASHES; do
+        _known=0; _inorigin=0
+        for _repo in /Users/nova-ai/nova-fleet-config /Users/nova-ai/project/nco; do
+            [ -d "$_repo/.git" ] || continue
+            git -C "$_repo" cat-file -e "${_h}^{commit}" 2>/dev/null || continue
+            _known=1
+            if git -C "$_repo" branch -r --contains "$_h" 2>/dev/null | grep -q 'origin/'; then _inorigin=1; break; fi
+        done
+        if [ "$_known" = "1" ] && [ "$_inorigin" = "0" ]; then
+            VIOLATIONS+=("[G6] 커밋 ${_h}를 push했다고 주장했으나 origin에 없음(로컬 커밋만). '푸시' 주장은 origin 반영 확인 후에만 가능.")
+        fi
+    done
 fi
 
 # ── 결과 처리 ──────────────────────────────────────────────────
