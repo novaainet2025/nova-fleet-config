@@ -27,6 +27,11 @@ try:
 except Exception:
     print("")' 2>/dev/null)"
 
+# [2026-07-12] stale-read 완화: Stop 훅이 직전 완료 턴이 transcript(.jsonl)에 flush되기 전 읽으면
+# 리포트가 한 턴 이전 상태(진행중·이미해결 항목 잔존)를 표시해 실제 판정과 모순됨(사용자 지적).
+# 짧게 대기해 최종 턴 반영 보장. autoloop stale-read 수정과 동일 원리.
+[ -n "$NCO_TRANSCRIPT" ] && [ -f "$NCO_TRANSCRIPT" ] && sleep 0.7
+
 # ── 세션 ID 해석 (SID = track 파일 스코프 앵커) ──────────────────
 _SID="${NCO_SESSION_ID:-}"
 if [ -z "$_SID" ]; then
