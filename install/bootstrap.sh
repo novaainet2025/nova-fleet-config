@@ -804,6 +804,23 @@ else
   warn ".env.example 없음 — 수동 .env 설정 필요"
 fi
 
+# ── FLEET_CENTRAL_URL 자동 설정 (원격 프로바이더 노드 자동 등록) ──
+# 중앙(nova-macstudio, tailscale 100.88.88.69)이 아니면 이 호스트 nco가 60초마다
+# 자기 프로바이더 상태를 중앙으로 push → 대시보드에 이 호스트의 프로바이더 노드가 자동 생성.
+# .env 는 git 비추적(시크릿 안전) 유지 — 온보딩이 값만 자동 write. self-guard로 중앙엔 미기록.
+FLEET_CENTRAL_IP="100.88.88.69"
+if [[ -f "$ENV_FILE" ]]; then
+  _my_ts=$( (tailscale ip -4 2>/dev/null || /Applications/Tailscale.app/Contents/MacOS/Tailscale ip -4 2>/dev/null) | head -1 )
+  if grep -q '^FLEET_CENTRAL_URL=' "$ENV_FILE" 2>/dev/null; then
+    ok "FLEET_CENTRAL_URL 이미 설정됨 — 유지"
+  elif [[ -n "$_my_ts" && "$_my_ts" == "$FLEET_CENTRAL_IP" ]]; then
+    ok "이 머신이 fleet 중앙 — FLEET_CENTRAL_URL 미설정(정상)"
+  else
+    echo "FLEET_CENTRAL_URL=http://${FLEET_CENTRAL_IP}:6200" >> "$ENV_FILE"
+    ok "FLEET_CENTRAL_URL 자동 설정(→$FLEET_CENTRAL_IP) — 프로바이더 상태 중앙 push 활성"
+  fi
+fi
+
 echo ""
 echo -e "${YELLOW}  ▶ .env 필수 API 키 목록 (편집 필요):${NC}"
 echo -e "    ${BOLD}vim $ENV_FILE${NC}"

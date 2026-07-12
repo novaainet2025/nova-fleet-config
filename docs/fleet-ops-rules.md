@@ -24,6 +24,11 @@
 ## ④ 상태 데이터 신뢰성
 - 원격 상태는 각 호스트 NCO가 중앙으로 **push**: `.env`에 `FLEET_CENTRAL_URL=http://<중앙>:6200` 설정 시
   60초마다 `POST /api/fleet/report` 자동 발신 (nco `src/server/routes/fleet-ops.ts`).
+  - **(2026-07-12) 온보딩 자동화**: `install/bootstrap.sh`가 `.env` 생성 후 self-guard로
+    `FLEET_CENTRAL_URL=http://100.88.88.69:6200`(중앙 tailscale)을 자동 기록한다. 자기 IP가
+    중앙이면 미기록, 이미 있으면 유지. `.env` 자체는 여전히 git 비추적(값만 온보딩이 write).
+    → **새 원격 기기는 온보딩(또는 `bootstrap.sh --update`)만으로 프로바이더 노드가 자동 생성**된다.
+    기존 기기는 `bash ~/nova-fleet-config/install/bootstrap.sh --update` 1회로 소급 적용.
 - 3분 초과 stale 데이터는 대시보드가 `⏱Nm` 표시하고 working을 신뢰하지 않는다.
 - 원격/타세션 완료 주장은 T1 증거 필수. T4(LLM 자연어)는 참고만.
 
