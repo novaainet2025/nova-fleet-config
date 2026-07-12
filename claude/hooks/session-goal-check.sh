@@ -42,7 +42,10 @@ def user_text(c):
 def is_reminder(t):
     if not t: return True
     adm = ('<task-notification>','[task-notification]','<system-reminder>',
-           'system-reminder:','Stop hook feedback:','[AUTO-LOOP]')
+           'system-reminder:','Stop hook feedback:','[AUTO-LOOP]',
+           # 루프 machinery 자체는 목표 아님 — 자기 프롬프트를 새 목표로 세어 종료불가(self-perpetuate)하던 결함 차단
+           '# /loop', '/loop ', 'bash ~/.claude/hooks/session-goal-check',
+           'bash $HOME/.claude/hooks/session-goal-check')
     return t.startswith(adm)
 
 RECEIPT = ('검증 영수증',)
@@ -153,6 +156,17 @@ qnote = f' · ⚠️보고품질 이슈({", ".join(q)}, 완료율과 별도)' if
 e(f'Gap(완료율): {gap}% (목표 {eff}/{result["total"]} 해결){qnote}')
 e(f'판정: {result["verdict"]}' + (' — 모든 목표 ✅해결' if all_resolved
    else ' — 진행중/미완 목표 존재' if result['verdict']=='INCOMPLETE' else ''))
+
+# ▶ 다음 단계 (체크 강화) — INCOMPLETE면 미완 목표를 자동실행 대상으로 명시.
+# 루프는 이 목록이 비면(모두 ✅) COMPLETE로 종료 → "다음 단계 없을 때까지 진행" 계약 충족.
+_next = [g['summary'] for g in result['goals'] if g['status'] in ('🔄진행중', '⏳대기')]
+result['next_steps'] = _next
+if result['verdict'] == 'INCOMPLETE' and _next:
+    e('▶ 다음 단계 (자동 실행 대상):')
+    for _s in _next[:5]:
+        e(f'  - {_s}')
+elif result['verdict'] == 'COMPLETE':
+    e('▶ 다음 단계: 없음 — 루프 종료')
 
 print(json.dumps(result, ensure_ascii=False))
 sys.exit(0 if result['verdict'] == 'COMPLETE' else 2)

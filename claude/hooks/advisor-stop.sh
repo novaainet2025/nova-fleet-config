@@ -259,6 +259,11 @@ def scan_transcript(path):
             '<local-command-caveat>',
             '<command-name>',
             '<local-command-stdout>',
+            # 루프 machinery 자체는 목표 아님 (self-perpetuate 방지 — session-goal-check와 동일)
+            '# /loop',
+            '/loop ',
+            'bash ~/.claude/hooks/session-goal-check',
+            'bash $HOME/.claude/hooks/session-goal-check',
         )
         return (
             text.startswith(admin_prefixes)
