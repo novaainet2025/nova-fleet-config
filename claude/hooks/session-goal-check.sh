@@ -116,7 +116,23 @@ if result['total'] == 0:
     print(json.dumps(result, ensure_ascii=False)); sys.exit(3)
 
 # Gap = 목표 완료율 (advisor-stop L2와 동일: 완료율/보고품질 분리, 상한 없음)
-last_promoted = result['final_receipt'] and result['resolved'] < result['total']
+# [RC-B fix 2026-07-12] 검증 영수증 '존재'만으로 마지막 목표를 완료 승격하면 안 된다.
+#   no-false-report-gate + CLAUDE.md 규칙#1 이 매 보고에 '## 검증 영수증'을 강제하므로,
+#   영수증 유무는 완료 신호가 될 수 없다(규칙 충돌 → 루프가 매 턴 조기종료 = 사용자 증상).
+#   대신 영수증이 스스로 기록하는 [Gap] N% 를 완료 신호로 쓴다:
+#     - [Gap] N% 가 있으면 N>=THRESHOLD 일 때만 승격(마지막 목표 해결로 인정)
+#     - [Gap]% 미기재 시엔 진행/미완 텍스트 신호 부재를 요구(보수적: 애매하면 루프 계속)
+#   종료 가능성 보존: 진짜 완료 턴은 [Gap] 100%(또는 미완신호 없는 영수증)로 종료된다.
+# 영수증 필드 줄(줄머리 '- [Gap] N%')에만 앵커 — 산문 속 '[Gap]100%' 언급 오탐 방지
+_gapm = re.findall(r'(?m)^\s*-\s*\[Gap\][^\n]*?(\d{1,3})\s*%', final_text)
+_open_sig = ('진행중', '진행 중', '다음 작업', '다음 단계', '보류', '승인 대기',
+             '확인 후 진행', '질문:', '이어서 진행', '계속 진행')
+if _gapm:
+    _receipt_done = int(_gapm[-1]) >= THRESHOLD
+else:
+    _receipt_done = not any(s in final_text for s in _open_sig)
+last_promoted = result['final_receipt'] and _receipt_done and result['resolved'] < result['total']
+result['receipt_done'] = _receipt_done
 eff = result['resolved'] + (1 if last_promoted else 0)
 gap = round(eff / result['total'] * 100)
 result['gap'] = gap

@@ -358,6 +358,15 @@ def scan_transcript(path):
     # Gap v2 — 목표기반 실측 필드 (final_receipt = 최종 어시스턴트 턴에 검증영수증 존재 여부)
     final_text = '\n'.join(assistant_chunks)
     tx['final_receipt'] = ('검증 영수증' in final_text)
+    # [RC-B fix 2026-07-12] 영수증 '존재'는 no-false-report-gate가 매 보고에 강제하므로 완료 신호 불가.
+    # 영수증이 스스로 적는 '- [Gap] N%'(줄머리 앵커)를 완료 신호로 사용 → 조기완료/표시모순 방지.
+    _gapm = re.findall(r'(?m)^\s*-\s*\[Gap\][^\n]*?(\d{1,3})\s*%', final_text)
+    _open_sig = ('진행중', '진행 중', '다음 작업', '다음 단계', '보류', '승인 대기',
+                 '확인 후 진행', '질문:', '이어서 진행', '계속 진행')
+    if _gapm:
+        tx['receipt_done'] = int(_gapm[-1]) >= 95
+    else:
+        tx['receipt_done'] = tx['final_receipt'] and not any(s in final_text for s in _open_sig)
     tx['goals_total'] = len(tx['goals_timeline'])
     tx['goals_resolved'] = sum(1 for it in tx['goals_timeline'] if it.get('status') == '✅해결')
     tx['goals_timeline'] = sorted(tx['goals_timeline'], key=lambda item: (item.get('sort_key', ''), item.get('summary', '')))
@@ -546,9 +555,16 @@ elif tx is not None and tx.get('goals_total', 0) >= 1:
     # 구조적으로 종료 불가(자기모순). 따라서 완료율은 순수 목표해결 기준, 보고품질은 별도 플래그.
     total = tx['goals_total']
     resolved = tx['goals_resolved']
-    # 마지막 목표(Stop 시점 항상 진행중): 최종 턴에 검증영수증 있으면 완료로 승격
-    last_promoted = bool(tx.get('final_receipt')) and resolved < total
+    # 마지막 목표(Stop 시점 항상 진행중): 최종 턴 영수증의 [Gap] 필드가 완료(≥95%)면 승격
+    last_promoted = bool(tx.get('receipt_done')) and resolved < total
     eff_resolved = resolved + (1 if last_promoted else 0)
+    # 표시 일관성: 승격되면 타임라인의 마지막 '🔄진행중' 항목을 '✅해결'로 반영
+    # (판정=완료인데 표시=진행중인 모순 제거 — 사용자가 완료여부를 한눈에 알 수 있게)
+    if last_promoted:
+        for _it in tx['goals_timeline']:
+            if _it.get('status') == '🔄진행중':
+                _it['status'] = '✅해결'
+                break
     pct = int(round(eff_resolved / total * 100))   # 완료율 = 목표해결/전체 (상한 없음)
     remaining = total - eff_resolved
     gate = '통과 (≥95%)' if pct >= 95 else '미통과 (<95%) → 미완료 목표 잔존'
@@ -724,6 +740,12 @@ else:
         L.append('요청 타임라인:')
         for item in timeline:
             L.append(f'- [{item.get("time_display", item["time"])}] {item["status"]} {item["summary"]}')
+        # 세션 상태 명시 — 사용자가 완료/진행중을 한눈에 판단 (표시=판정 일치)
+        _open = [it for it in timeline if it.get('status') == '🔄진행중']
+        if _open:
+            L.append(f'▶ 세션 상태: 🔄 진행중 — 미완 {len(_open)}건 (자동 루프 계속 대상)')
+        else:
+            L.append('▶ 세션 상태: ✅ 완료 — 모든 목표 해결')
 L.append('')
 
 # ② Before → After (decision-log 근거=이전 문제, 결정=이번 조치)
@@ -894,6 +916,12 @@ if _gt:
             D.append(f'   [{item_time}] {item["status"]} {_clip(item["summary"], 60)}')
         else:
             D.append(f'   {_clip(item["summary"], 60)}')
+    # 세션 상태 명시 — 표시(타임라인)와 판정(Gap)이 일치하도록 완료/진행중을 한 줄로 (2026-07-12)
+    _open_d = [it for it in _gt if it.get('status') == '🔄진행중']
+    if _open_d:
+        D.append(f'   ▶ 세션 상태: 🔄 진행중 — 미완 {len(_open_d)}건 (자동 루프 계속 대상)')
+    else:
+        D.append('   ▶ 세션 상태: ✅ 완료 — 모든 목표 해결')
 D.append('')
 D.append('▶ 요약')
 D.append(f'   {summary} · {task_type}')
