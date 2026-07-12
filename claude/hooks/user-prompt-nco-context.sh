@@ -90,6 +90,11 @@ if [ -n "$NCO_HEALTH" ]; then
       -H "Content-Type: application/json" \
       -d "{\"sessionId\":\"$NCO_SESSION_ID\",\"agentId\":\"$MY_NAME\",\"pid\":$NCO_SESSION_ID,\"status\":\"coding\",\"currentWork\":\"$(echo "$PROMPT_PREVIEW" | sed 's/"/\\"/g' | sed "s/'/\\\\'/g")\",\"currentFiles\":$FILES_JSON,\"branch\":\"$BRANCH\"}" 2>/dev/null)
 
+    # cli_sessions 레지스트리 heartbeat (2026-07-12 claude-2): 대시보드 세션 관측 배선(fire-and-forget)
+    curl -s --connect-timeout 1 --max-time 2 -X POST http://localhost:6200/api/cli-session \
+      -H "Content-Type: application/json" \
+      -d "{\"id\":\"$NCO_SESSION_ID\",\"hostname\":\"$(hostname 2>/dev/null || echo unknown)\",\"pid\":\"$NCO_SESSION_ID\",\"projectDir\":\"$PROJECT_DIR\",\"cliVersion\":\"$MY_NAME\",\"status\":\"busy\",\"currentTask\":\"$(echo "$PROMPT_PREVIEW" | sed 's/"/\\"/g' | sed "s/'/\\\\'/g")\"}" >/dev/null 2>&1 || true
+
     # Extract conflicts
     MESH_CONFLICTS=$(echo "$MESH_HB" | python3 -c "import sys,json; d=json.load(sys.stdin); c=d.get('conflicts',[]); print('; '.join(c)) if c else print('')" 2>/dev/null || echo "")
 
@@ -303,6 +308,22 @@ ${INBOX_BLOCK}"
             echo "$_SIZE" > "$INBOX_OFFSET"
         fi
     fi
+
+    # ── 부드러운 유도 (2026-07-12 claude-2): 작업유형별 팀/회사 위임 권고 (차단 아님, 키워드 매칭 시에만) ──
+    _PL=$(echo "$PROMPT_PREVIEW" | tr '[:upper:]' '[:lower:]')
+    _NUDGE=""
+    case "$_PL" in
+      *구현*|*추가*|*만들*|*개발*|*리팩*|*feature*|*implement*)
+        _NUDGE="[유도] 구현성 작업 — nco_task codex 또는 nco_parallel[codex,cursor-agent] 위임 권장(대형이면 nco_commander)." ;;
+      *버그*|*고쳐*|*에러*|*오류*|*fix*|*bug*)
+        _NUDGE="[유도] 버그수정 — nco_task codex 위임 + nco_task ollama 검증 권장." ;;
+      *리뷰*|*검토*|*보안*|*취약*|*review*|*security*)
+        _NUDGE="[유도] 리뷰/보안 — nco_task cursor-agent(read-only 명시) 권장." ;;
+      *설계*|*아키텍*|*구조*|*design*|*architect*)
+        _NUDGE="[유도] 설계 — nco_task opencode 또는 nco_discussion 권장." ;;
+    esac
+    [ -n "$_NUDGE" ] && CONTEXT="${CONTEXT}
+${_NUDGE}"
 
     cat <<ENDJSON
 {
