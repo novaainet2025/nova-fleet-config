@@ -41,9 +41,29 @@ except Exception: print('? ? 0 0')" 2>/dev/null)"
     # ── 이상 탐지 ──
     flag=""
     if [ "$verdict" = "INCOMPLETE" ] && [ "$age" -ge "$STALL_MIN" ]; then
-        # 진행중인데 STALL_MIN분 이상 transcript 변화 없음 = 정체(멈춤) 의심
-        flag="⚠️정체(${age}m 무변화, gap=${gap}%, next=${nnext}, receipt=${fr})"
-        anomalies=$((anomalies+1))
+        # [2026-07-12 개선] 정체(멈춤) vs 사용자 대기(승인/질문으로 끝남) 구분 — 대기는 정상 idle.
+        waiting=$(python3 -c "
+import json, re
+last=''
+for l in open('$tx',encoding='utf-8',errors='ignore'):
+    l=l.strip()
+    if not l: continue
+    try: d=json.loads(l)
+    except: continue
+    if d.get('type')!='assistant': continue
+    c=(d.get('message') or {}).get('content')
+    if isinstance(c,list):
+        t=' '.join(i.get('text','') for i in c if isinstance(i,dict) and i.get('type')=='text')
+        if t.strip(): last=t
+tail=last[-300:]
+print('1' if re.search(r'진행할까요|할까요|괜찮을까요|드릴까요|승인|대기 중인 결정|어느 쪽|택.*주세요|\?\s*\$|켤까요|진행\?', tail) else '0')
+" 2>/dev/null)
+        if [ "$waiting" = "1" ]; then
+            flag="⏸️대기(사용자 승인/응답 ${age}m — 정상, 정체 아님)"   # anomaly 아님
+        else
+            flag="⚠️정체(${age}m 무변화, gap=${gap}%, next=${nnext}, receipt=${fr})"
+            anomalies=$((anomalies+1))
+        fi
     elif [ "$verdict" = "?" ]; then
         flag="⚠️판정불가(transcript 파싱 실패)"
         anomalies=$((anomalies+1))
