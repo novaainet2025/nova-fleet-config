@@ -206,6 +206,12 @@
             "command": "bash {{HOME}}/.claude/hooks/nco-session-report.sh",
             "timeout": 8,
             "statusMessage": "NCO 세션 보고서 생성 중..."
+          },
+          {
+            "type": "command",
+            "command": "bash /Users/nova-ai/.claude/hooks/nco-autoloop-stop.sh",
+            "timeout": 20,
+            "statusMessage": "AUTO-LOOP: 다음 단계 자동 실행 판정..."
           }
         ]
       },
