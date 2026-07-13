@@ -222,9 +222,9 @@ idle 상태의 다른 Claude 세션이 mesh DM을 자동으로 수신하려면 *
 
 ## inter-session 이름 규칙 (절대)
 
-**inter-session 자동 이름 = `<디바이스기기명>-<statusline NCO 이름>`** (예: `newkangpc-claude-7`, `novas-macbook-pro-claude-1`)
+**inter-session 자동 이름 = `<디바이스기기명>-<nova-N>`** (예: `newkangpc-nova-7`, `novas-macbook-pro-nova-1`)
 
-> 2026-06-06 변경 (사용자 지시): 기기별 동일 `claude-N` 충돌(WSL `claude-1` ↔ Mac `claude-1-2`) 방지를 위해 **디바이스 prefix 추가**. 구분자는 하이픈(`-`) — inter-session `NAME_RE=^[a-z0-9][a-z0-9-]{0,39}$`가 언더스코어(`_`)를 거부하기 때문(T1: shared.py:61). **NCO/mesh 내부 이름(`NCO_NAME`)은 `claude-N` 그대로 유지** — inter-session connect 이름에만 prefix를 붙인다.
+> 2026-07-13 변경 (사용자 지시): inter-session connect 이름의 라벨을 `claude-N`에서 **`nova-N`**으로 교체("디바이스 구분자-nova-n" 규칙화). 기존 2026-06-06 디바이스 prefix 규칙(WSL `claude-1` ↔ Mac `claude-1-2` 충돌 방지)은 그대로 유지, 접미사 라벨만 교체. 구분자는 하이픈(`-`) — inter-session `NAME_RE=^[a-z0-9][a-z0-9-]{0,39}$`가 언더스코어(`_`)를 거부하기 때문(T1: shared.py:61). **NCO/mesh 내부 이름(`NCO_NAME`)은 여전히 `claude-N` 그대로 유지** — inter-session connect 이름에서만 `claude`→`nova`로 라벨을 바꾼다(statusline·NCO_NAME·`/tmp/nco-names/claude-*.pid` 등 내부 파이프라인은 무변경).
 
 `/inter-session connect`를 호출할 때 — 사용자가 이름을 명시하지 않았으면 cwd/컨텍스트에서 추측 금지. 반드시 아래 순서로 결정:
 
@@ -233,15 +233,17 @@ idle 상태의 다른 Claude 세션이 mesh DM을 자동으로 수신하려면 *
 #    또는 /tmp/nco-names에서 내 CC 조상 PID 매칭 .pid 찾기:
 my_pid=$(ck=$$; for _ in 1 2 3 4 5; do ck=$(ps -o ppid= -p "$ck" | tr -d ' '); cm=$(ps -o comm= -p "$ck"); echo "$cm" | grep -qE '^(claude|node)$' && echo "$ck" && break; done)
 MY_NAME=$(for pf in /tmp/nco-names/claude-*.pid; do [ "$(cat "$pf")" = "$my_pid" ] && basename "$pf" .pid && break; done)
-# 2) 디바이스 prefix 부착(소문자·비[a-z0-9]→'-'·.local제거·40자cap[device쪽만 자름])
+# 2) inter-session 라벨만 claude→nova로 치환 (NCO_NAME/MY_NAME 자체는 불변)
+_ISLABEL="${MY_NAME/claude/nova}"
+# 3) 디바이스 prefix 부착(소문자·비[a-z0-9]→'-'·.local제거·40자cap[device쪽만 자름])
 _ISDEV=$(hostname 2>/dev/null | tr '[:upper:]' '[:lower:]' | sed -E 's/\.local$//; s/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'); [ -z "$_ISDEV" ] && _ISDEV="dev"
-_ISSUF="-${MY_NAME}"; _ISDEV="${_ISDEV:0:$((40-${#_ISSUF}))}"; _ISDEV="${_ISDEV%-}"
-ISNAME="${_ISDEV}${_ISSUF}"   # → /inter-session connect "$ISNAME"
+_ISSUF="-${_ISLABEL}"; _ISDEV="${_ISDEV:0:$((40-${#_ISSUF}))}"; _ISDEV="${_ISDEV%-}"
+ISNAME="${_ISDEV}${_ISSUF}"   # → /inter-session connect "$ISNAME"  (예: nova-macstudio-nova-2)
 ```
 
-(이 로직은 `~/.claude/hooks/user-prompt-nco-context.sh`의 BOOTSTRAP 블록에 이미 구현됨 — 새 세션은 자동으로 `<device>-claude-N`로 connect.)
+(이 로직은 `~/.claude/hooks/user-prompt-nco-context.sh`의 BOOTSTRAP 블록에 이미 구현됨 — 새 세션은 자동으로 `<device>-nova-N`로 connect.)
 
-기존 monitor가 다른 이름으로 떠 있으면 → kill listener_pid → 1.5s 대기 → `--name <device>-claude-N`로 재spawn.
+기존 monitor가 다른 이름으로 떠 있으면 → kill listener_pid → 1.5s 대기 → `--name <device>-nova-N`로 재spawn.
 
 **금지**: `nco-commander`, `hwpx-restyle`, `auth-refactor` 같은 임의 cwd/주제 기반 이름. SKILL.md의 "propose hyphenated words" 가이드는 무시한다 (이 프로젝트는 NCO 컨벤션이 우선).
 
@@ -269,7 +271,7 @@ ISNAME="${_ISDEV}${_ISSUF}"   # → /inter-session connect "$ISNAME"
 
 **조건**: UserPromptSubmit additionalContext에 `[BOOTSTRAP]` 라벨이 있으면 **첫 응답의 어떤 작업보다 먼저** 다음 SKILL을 invoke한다 (단 한 번):
 
-1. `/inter-session connect` (또는 inter-session SKILL invoke) — name은 `<디바이스기기명>-claude-N` 사용(BOOTSTRAP 라벨이 `name=<device>-claude-N`을 직접 명시함). mesh의 `NCO_NAME`은 `claude-N` 유지 ([[feedback_inter_session_name]])
+1. `/inter-session connect` (또는 inter-session SKILL invoke) — name은 `<디바이스기기명>-nova-N` 사용(BOOTSTRAP 라벨이 `name=<device>-nova-N`을 직접 명시함). mesh의 `NCO_NAME`은 `claude-N` 유지 — inter-session 라벨만 nova-N ([[feedback_inter_session_name]])
 2. mesh-receiver Monitor 호출:
    ```
    Monitor(
