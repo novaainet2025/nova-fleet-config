@@ -30,7 +30,7 @@ _ensure_tool_activity_reporter_hooks(){ # settings.json에 reporter Pre/PostTool
       exit 5
     fi
     if jq -e --arg pre "$pre_cmd" --arg post "$post_cmd" '
-      def has_cmd($event; $cmd): any((.hooks[$event] // [])[]?.hooks[]?; .command == $cmd);
+      def has_cmd($event; $cmd): any((.hooks[$event] // [])[]?.hooks[]?; (.command // "") | contains("tool-activity-reporter.sh"));
       has_cmd("PreToolUse"; $pre) and has_cmd("PostToolUse"; $post)
     ' "$settings" >/dev/null 2>&1; then
       log "settings hook 보장: tool-activity-reporter 이미 등록됨(skip)"
@@ -40,7 +40,7 @@ _ensure_tool_activity_reporter_hooks(){ # settings.json에 reporter Pre/PostTool
     cp "$settings" "$backup"
     tmp="$(mktemp "${TMPDIR:-/tmp}/fleet-settings.XXXXXX")"
     if ! jq --arg pre "$pre_cmd" --arg post "$post_cmd" '
-      def has_cmd($event; $cmd): any((.hooks[$event] // [])[]?.hooks[]?; .command == $cmd);
+      def has_cmd($event; $cmd): any((.hooks[$event] // [])[]?.hooks[]?; (.command // "") | contains("tool-activity-reporter.sh"));
       def ensure_cmd($event; $cmd):
         .hooks = (.hooks // {}) |
         .hooks[$event] = (.hooks[$event] // []) |
@@ -73,7 +73,7 @@ with open(sys.argv[1], encoding="utf-8") as f:
 
 def has_cmd(event, cmd):
     return any(
-        hook.get("command") == cmd
+        "tool-activity-reporter.sh" in (hook.get("command") or "")
         for entry in (data.get("hooks", {}) or {}).get(event, [])
         for hook in (entry.get("hooks", []) if isinstance(entry, dict) else [])
         if isinstance(hook, dict)
@@ -113,7 +113,7 @@ def has_cmd(event, cmd):
         if not isinstance(hooks, list):
             continue
         for hook in hooks:
-            if isinstance(hook, dict) and hook.get("command") == cmd:
+            if isinstance(hook, dict) and "tool-activity-reporter.sh" in (hook.get("command") or ""):
                 return True
     return False
 

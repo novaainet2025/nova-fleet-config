@@ -46,12 +46,16 @@ try:
     print(d.get('tool_input', {}).get('subagent_type', ''))
 except: print('')
 " 2>/dev/null)
+        # 2026-07-23 완화(사용자 승인 ③): 리서치/조사/병렬분석 서브에이전트는 허용.
+        # 구현용은 위임을 "권고"만 하고 차단하지 않음(비차단). 하드블록 복원: NCO_AGENT_HARD_BLOCK=1
         case "$SUBAGENT_TYPE" in
-            Explore|Plan|claude-code-guide|statusline-setup)
+            Explore|Plan|claude-code-guide|statusline-setup|general-purpose|claude|"")
+                # 리서치·조사·병렬 분석 전용 → 무조건 허용 (병렬 서브에이전트 활용 회복)
                 exit 0 ;;
             *)
-                # 위반 카운트 기록 (워크플로우 훅에서 사용)
-                python3 -c "
+                if [ "${NCO_AGENT_HARD_BLOCK:-0}" = "1" ]; then
+                    # 위반 카운트 기록 (워크플로우 훅에서 사용)
+                    python3 -c "
 import json, os
 f='$SESSION_TRACK'; d={}
 try: d=json.load(open(f))
@@ -59,21 +63,17 @@ except: pass
 d['agent_violations'] = d.get('agent_violations', 0) + 1
 json.dump(d, open(f,'w'))
 " 2>/dev/null
-                cat >&2 <<AGENT_BLOCK
+                    cat >&2 <<AGENT_BLOCK
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[NCO 규칙 위반 — Agent 도구 차단]
-
-⛔ Claude Code 내장 Agent로 구현 작업을 직접 실행하려 했습니다.
-
-Opus Commander 규칙: 모든 구현/수정은 NCO 도구로 위임해야 합니다.
-  → /nco-task <agent> <prompt>   (단일 에이전트 위임)
-  → /nco-team <prompt>           (병렬 에이전트 실행)
-  → /nco-mesh send @<id> [TASK]  (열린 세션에 위임)
-
-허용되는 서브에이전트: Explore, Plan, claude-code-guide, statusline-setup (리서치 전용)
+[NCO 규칙 위반 — Agent 도구 차단 (HARD_BLOCK 모드)]
+⛔ 구현 작업은 NCO 도구로 위임하세요: /nco-task · /nco-team · /nco-mesh
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 AGENT_BLOCK
-                exit 2 ;;
+                    exit 2
+                fi
+                # 기본: 비차단 권고만 (조사·분석 병렬화 허용)
+                echo "[NCO 권고] 구현/수정 서브에이전트('$SUBAGENT_TYPE')는 가능하면 /nco-task·/nco-team 위임 권장 (비차단)." >&2
+                exit 0 ;;
         esac
         ;;
     Edit|Write|MultiEdit|Bash)
