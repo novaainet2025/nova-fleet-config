@@ -49,10 +49,11 @@ if [ -x "$H/loop-lesson.sh" ]; then
   [ -n "$OUT" ] && echo "$OUT" || echo "   (없음)"
 else echo "   (loop-lesson 미설치)"; fi
 
-# ④ 거짓보고 게이트 누적
-echo "▶ ④ 거짓보고 게이트 누적  [소스: ~/.claude/.false-report-count]"
-CNT=$(cat "$HOME/.claude/.false-report-count" 2>/dev/null || echo 0)
-echo "   누적 차단 ${CNT}회 (게이트가 실제 작동 중이라는 증거 — 0이면 이번 세션 위반 없음)"
+# ④ 거짓보고 게이트 (세션 스코프 + 전체)
+echo "▶ ④ 거짓보고 게이트  [소스: ~/.claude/.false-report-count-<sid> · -count]"
+GLOB=$(cat "$HOME/.claude/.false-report-count" 2>/dev/null || echo 0)
+SESS=$(cat "$HOME/.claude/.false-report-count-${CO_SID_CUR}" 2>/dev/null || echo 0)
+echo "   이번 세션 ${SESS}회 · 전체 ${GLOB}회 (세션값 정확 · 전체는 다세션 공유라 근사)"
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "재확인: 위 [소스] 파일을 cat 하면 동일 데이터를 직접 볼 수 있음 (조작 불가)"
