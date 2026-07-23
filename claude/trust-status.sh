@@ -10,11 +10,14 @@ TP="${1:-}"
 
 echo "━━━━━━━━━━━━ 신뢰 상태 (trust-status) — 지상진실 ━━━━━━━━━━━━"
 
-# ① 미해결 이월 (사라지지 않는 과제)
-echo "▶ ① 미해결 이월  [소스: ~/.claude/.carryover/open-items.jsonl]"
+# ① 미해결 이월 (사라지지 않는 과제) — 현재 세션 스코프
+CO_SID_CUR=$(basename "$TP" .jsonl 2>/dev/null)
+echo "▶ ① 미해결 이월 (현재 세션)  [소스: ~/.claude/.carryover/open-items.jsonl]"
 if [ -x "$H/carryover.sh" ]; then
-  OUT=$(bash "$H/carryover.sh" list 2>/dev/null)
-  [ -n "$OUT" ] && echo "$OUT" | sed 's/^/   /' || echo "   (없음 — 모든 과제 close됨)"
+  OUT=$(CO_SID="$CO_SID_CUR" bash "$H/carryover.sh" list 2>/dev/null)
+  [ -n "$OUT" ] && echo "$OUT" | sed 's/^/   /' || echo "   (없음 — 이 세션 과제 모두 close/해당없음)"
+  AC=$(bash "$H/carryover.sh" count --all 2>/dev/null || bash "$H/carryover.sh" list --all 2>/dev/null | grep -c '▢')
+  echo "   (전 세션 미해결 총 ${AC:-0}건 — 'carryover.sh list --all'로 확인)"
 else echo "   (carryover 미설치)"; fi
 
 # ② 이번 세션 목표 · 정직Gap (증거 있는 것만 해결로 카운트)

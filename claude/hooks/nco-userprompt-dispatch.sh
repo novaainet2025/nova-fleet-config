@@ -32,10 +32,13 @@ LL="$H/loop-lesson.sh"
 if [ -x "$LL" ]; then
   o=$(bash "$LL" inject 2>/dev/null); [ -n "$o" ] && OUT="${OUT}${o}"$'\x1e'
 fi
-# 미해결 이월 강제 표면화 (Fix C) — verify/승인 전까지 안 사라짐
+# 미해결 이월 강제 표면화 (Fix C) — verify/승인 전까지 안 사라짐. ★현재 세션만(동시세션 격리)
 CO="$H/carryover.sh"
 if [ -x "$CO" ]; then
-  o=$(bash "$CO" inject 2>/dev/null); [ -n "$o" ] && OUT="${OUT}${o}"$'\x1e'
+  _cosid=$(printf '%s' "$INPUT" | python3 -c 'import sys,json
+try: print(json.load(sys.stdin).get("session_id") or "")
+except: print("")' 2>/dev/null)
+  o=$(CO_SID="$_cosid" bash "$CO" inject 2>/dev/null); [ -n "$o" ] && OUT="${OUT}${o}"$'\x1e'
 fi
 
 # 평문/JSON 혼합을 단일 JSON additionalContext로 병합
