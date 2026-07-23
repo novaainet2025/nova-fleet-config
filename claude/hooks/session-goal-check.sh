@@ -43,6 +43,10 @@ def is_reminder(t):
     if not t: return True
     adm = ('<task-notification>','[task-notification]','<system-reminder>',
            'system-reminder:','Stop hook feedback:','[AUTO-LOOP]',
+           # [2026-07-23] 슬래시명령 잔여물(/clear 등)을 목표로 오카운트 방지 (정직Gap 정확도)
+           '<local-command-caveat>','<command-name>','<command-message>',
+           '<command-args>','<local-command-stdout>','<command-contents>',
+           'Caveat: The messages below were generated',
            # 루프 machinery 자체는 목표 아님 — 자기 프롬프트를 새 목표로 세어 종료불가(self-perpetuate)하던 결함 차단
            '# /loop', '/loop ', 'bash ~/.claude/hooks/session-goal-check',
            'bash $HOME/.claude/hooks/session-goal-check',
