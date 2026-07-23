@@ -292,10 +292,17 @@ def scan_transcript(path):
             return ''
         return text
 
+    DELIVERABLE_FAIL_KW = (
+        '쓸 수 없', '쓸수없', '형편없', '환각', '말도 안', '말도안',
+        '결과물: 실패', '결과물은 실패', '결과물 실패', '리서치 결과물: 실패',
+        '완전 이탈', '주제 이탈', '주제를 이탈', '거짓 보고', '오작동',
+    )
     def classify_request_status(assistant_text, is_last=False):
         if is_last:
             return '🔄진행중'
         text = assistant_text or ''
+        if any(k in text for k in DELIVERABLE_FAIL_KW):
+            return '❌실패'
         if any(k in text for k in ('done:', '완료', '커밋')):
             return '✅해결'
         if any(k in text for k in ('대기', '회신 대기', '발주')):
@@ -592,8 +599,11 @@ elif tx is not None and tx.get('goals_total', 0) >= 1:
     # 구조적으로 종료 불가(자기모순). 따라서 완료율은 순수 목표해결 기준, 보고품질은 별도 플래그.
     total = tx['goals_total']
     resolved = tx['goals_resolved']
-    # 마지막 목표(Stop 시점 항상 진행중): 최종 턴 영수증의 [Gap] 필드가 완료(≥95%)면 승격
-    last_promoted = bool(tx.get('receipt_done')) and resolved < total
+    # 마지막 목표(Stop 시점 항상 진행중): 최종 턴 영수증의 [Gap]≥95% 이거나, 코어 verdict 가
+    # COMPLETE(=현재 턴 외 미완 목표 0) 이면 승격. [2026-07-17 fix] 기존엔 Gap≥95만 봐서,
+    # Gap<95(예: 사용자 실테스트 대기 85%)이면 세션상태=완료인데 목표는 🔄진행중으로 남아
+    # "진행중인데 왜 완료?" 모순이 보였음(사용자 지적). 두 기준(표시·상태)을 일치시킨다.
+    last_promoted = (bool(tx.get('receipt_done')) or bool(_sgc_complete)) and resolved < total
     eff_resolved = resolved + (1 if last_promoted else 0)
     # 표시 일관성: 승격되면 타임라인의 마지막 '🔄진행중' 항목을 '✅해결'로 반영
     # (판정=완료인데 표시=진행중인 모순 제거 — 사용자가 완료여부를 한눈에 알 수 있게)
@@ -615,6 +625,10 @@ elif tx is not None and tx.get('goals_total', 0) >= 1:
     detail = f'목표 {eff_resolved}/{total} 해결'
     if remaining > 0: detail += f', {remaining}건 진행중/미완'
     gap_block = f'달성률 **{pct}%** ({detail}) · 판정 → **{gate}**'
+    # [2026-07-23 Fix A] 정직Gap 병기 — 낙관(default=해결)과 별개로 '증거(영수증+T1)보유' 목표만 카운트.
+    _hg = _sgc.get('honest_gap'); _er = _sgc.get('evidence_resolved')
+    if _sgc_ok and _hg is not None:
+        gap_block += f'\n   🔎 정직Gap **{_hg}%** (증거보유 {_er}/{total} — 영수증+T1 있는 목표만; 낙관 달성률과 차이나면 미검증 완료주장 존재)'
     # 보고품질(report-integrity) — 완료율을 상한하지 않되 별도 명시(숨기지 않음)
     quality = []
     if tx['gate_blocks']: quality.append(f'게이트차단 {tx["gate_blocks"]}회')
@@ -660,6 +674,10 @@ if tx is not None:
     if tx['deleg'] and tx['unverified']:
         problems.append(f'위임 발주 후 미검증 항목 {len(tx["unverified"])}건 잔존')
         rules.append('위임은 결과 수집·T1 대조까지 완료해야 "완료" 보고')
+    _failed = sum(1 for it in tx.get('goals_timeline', []) if it.get('status') == '❌실패')
+    if _failed:
+        problems.append(f'산출물 실패 {_failed}건 — 실행자 역량/프로바이더 배정 불일치 가능')
+        rules.append('실행 전 실행자(lead) 등록·역량 확인; 빈/부실 산출물은 하류 전달 금지(환각 캐스케이드 차단); 실패는 "완료"로 보고 금지')
 for a, r in lesson_pairs[-3:]:
     problems.append((r or a)[:110]); rules.append(f'{a[:50]} → 재발방지 규칙화')
 if not problems:                       # transcript/로그 신호 없을 때만 누적 카운터 폴백
@@ -731,6 +749,14 @@ try:
     open(LEDGER, 'w', encoding='utf-8').write(json.dumps(ledger, ensure_ascii=False, indent=1))
 except Exception:
     pass
+
+# [2026-07-17 fix] 이미 memory(feedback_auto_*)로 승격된 규칙 = 학습 완료 → '새 교훈'에서 제외.
+#   기존엔 하드코딩 일반규칙(게이트/정정/위임)이 매 세션 발화해, 이미 학습·영구화된 규칙을
+#   매번 "다음 세션 규칙"으로 반복 출력 → "자가학습이 전혀 안 되는 것처럼 보임"(사용자 지적).
+#   승격분은 억제하고 신규 교훈만 노출 → 노트가 실제 학습 진척을 반영.
+_promoted_keys = {k for k, v in ledger.items() if v.get('promoted')}
+fresh_rules = [r for r in rules if _norm(r) not in _promoted_keys]
+learned_n = len(rules) - len(fresh_rules)
 
 # ── 9섹션 리포트 조립 ─────────────────────────────────────────────
 def bullets(items, empty='(없음)', n=8):
@@ -897,8 +923,12 @@ L.append('')
 
 # ⑨ 자기 학습 (다음 세션 적용 규칙 — 문제→규칙 결정론 매핑)
 L.append('## ⑨ 📚 자기 학습 (다음 세션 적용 규칙)')
-learn = rules if rules else ['반복 적용할 신규 규칙 없음 — 기존 규칙 유지']
-L.append(bullets(learn, n=4))
+if fresh_rules:
+    L.append(bullets(fresh_rules, n=4))
+    if learned_n:
+        L.append(f'- (기존 {learned_n}건은 이미 memory 승격·학습 완료 → 생략)')
+else:
+    L.append(f'- 신규 교훈 없음 — 기존 규칙 {learned_n}건 이미 학습(feedback_auto_*)·상시 적용 중')
 L.append('')
 L.append('---')
 _src = 'transcript(세션진실)' if tx is not None else f'git×{len([r for r in REPOS if is_repo(r)])}repo(폴백)'
@@ -1014,8 +1044,13 @@ else:
     D.append('   · 실측 문제신호 없음(게이트/정정/위반 0) — 대화 맥락 참조')
 D.append('')
 D.append('▶ 자기학습 — 다음 세션 규칙')
-for x in learn[:3]:
-    D.append(f'   · {_clip(x, 70)}')
+if fresh_rules:
+    for x in fresh_rules[:3]:
+        D.append(f'   · {_clip(x, 70)}')
+    if learned_n:
+        D.append(f'   · (기존 {learned_n}건 이미 학습·memory화 → 생략)')
+else:
+    D.append(f'   · 신규 교훈 없음 — 기존 {learned_n}건 상시 적용 중(feedback_auto_*)')
 D.append('')
 D.append('▶ 다음 단계')
 if _sgc_ok:

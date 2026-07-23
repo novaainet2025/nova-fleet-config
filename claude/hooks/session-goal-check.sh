@@ -65,13 +65,30 @@ PUSHBACK_RE = re.compile(
 
 def classify(txt, is_last=False):
     if is_last: return '🔄진행중'
-    if any(k in txt for k in ('done:', '완료', '커밋')): return '✅해결'
-    if any(k in txt for k in ('대기','회신 대기','발주')): return '⏳대기'
+    # [2026-07-17 fix] 완료 신호(영수증 Gap/해결/수정/반영/done/fixed)가 있으면 '대기' 문구가
+    #   섞여 있어도 ✅. 기존엔 응답에 '대기' 단어만 있으면 ⏳로 고착 → 정직한 보고("사용자 대기"
+    #   "승인 대기")가 완료 목표를 영구 미완으로 만들어 autoloop 이 매번 상한까지 헛돌던 근본원인.
+    done_sig = (any(k in txt for k in ('done:', '완료', '커밋', '해결', '수정했', '반영', 'fixed'))
+                or bool(re.search(r'\[Gap\]', txt)))
+    if done_sig: return '✅해결'
+    # 순수 대기: 완료 신호가 전혀 없이 명시적 승인/회신 대기·발주만 있을 때만 ⏳
+    if any(k in txt for k in ('회신 대기', '승인 대기', '발주', '답을 기다', '답변 대기')): return '⏳대기'
     return '✅해결'
+
+# [2026-07-23 Fix A — 정직한 판정] 증거 기반 해결 판정.
+# gap/verdict/exit 는 불변(autoloop 종료 로직 보호). 아래는 '보고용' 정직 지표만 추가.
+# 목표가 '증거보유'로 인정되려면: 그 목표 응답에 ## 검증 영수증 헤더 + [검증방법] + T1/실도구 흔적.
+def has_evidence(txt):
+    if not txt: return False
+    if not re.search(r'(?m)^\s*##\s*검증\s*영수증', txt): return False
+    if '[검증방법]' not in txt: return False
+    if not re.search(r'\bT1\b|curl|Bash|Read|`cat|grep|lsof|ss\b|HTTP|exit\s*0|→\s*200|json\.load', txt): return False
+    return True
 
 result = {'goals': [], 'total': 0, 'resolved': 0, 'gap': None,
           'capped': False, 'verdict': 'NO_GOALS', 'gate_blocks': 0,
-          'pushback': 0, 'unverified': 0, 'final_receipt': False, 'transcript': path}
+          'pushback': 0, 'unverified': 0, 'final_receipt': False, 'transcript': path,
+          'evidence_resolved': 0, 'honest_gap': 0}
 
 if not path or not os.path.exists(path):
     print(json.dumps(result, ensure_ascii=False)); sys.exit(3)
@@ -100,7 +117,9 @@ for ln in lines[-6000:]:
         req = substantive(ut)
         if req:
             if cur is not None:
-                result['goals'][cur]['status'] = classify('\n'.join(chunks))
+                _prevtxt = '\n'.join(chunks)
+                result['goals'][cur]['status'] = classify(_prevtxt)
+                result['goals'][cur]['evidence'] = has_evidence(_prevtxt)
             chunks = []
             result['goals'].append({'summary': re.sub(r'\s+',' ',req)[:60], 'status': '🔄진행중'})
             cur = len(result['goals']) - 1
@@ -108,7 +127,9 @@ for ln in lines[-6000:]:
                 and PUSHBACK_RE.search(ut)): pb += 1
 
 if cur is not None:
-    result['goals'][cur]['status'] = classify('\n'.join(chunks), is_last=True)
+    _lasttxt = '\n'.join(chunks)
+    result['goals'][cur]['status'] = classify(_lasttxt, is_last=True)
+    result['goals'][cur]['evidence'] = has_evidence(_lasttxt)
 
 final_text = '\n'.join(chunks)
 # final_receipt 는 실제 '## 검증 영수증' 헤더로만 판정 (2026-07-12 fix).
@@ -117,6 +138,9 @@ final_text = '\n'.join(chunks)
 result['final_receipt'] = bool(re.search(r'(?m)^\s*##\s*검증\s*영수증', final_text))
 result['total'] = len(result['goals'])
 result['resolved'] = sum(1 for g in result['goals'] if g['status'] == '✅해결')
+# [Fix A] 정직 지표: '해결' 중에서도 실제 증거(영수증+T1)를 가진 것만 카운트
+result['evidence_resolved'] = sum(1 for g in result['goals'] if g['status'] == '✅해결' and g.get('evidence'))
+result['honest_gap'] = round(result['evidence_resolved'] / len(result['goals']) * 100) if result['goals'] else 0
 result['gate_blocks'] = gb; result['pushback'] = pb; result['unverified'] = unv
 
 if result['total'] == 0:
@@ -147,8 +171,13 @@ result['gap'] = gap
 result['quality_issues'] = {'gate_blocks': gb, 'pushback': pb, 'unverified': unv}
 result['eff_resolved'] = eff
 
-# 판정: 달성가능 종료조건 = 모든 목표 ✅해결(마지막턴 영수증 승격 포함). Gap>=THRESHOLD 보조.
-all_resolved = (eff >= result['total'])
+# 판정: 종료조건 = 현재(답변중) 턴 외에 실제로 남은 미완 목표가 없으면 COMPLETE.
+# [2026-07-17 fix] 기존 all_resolved=(eff>=total)은 현재턴이 항상 🔄진행중이라 total에 못 미쳐
+#   INCOMPLETE 고착 → next_steps 가 비어도(할 일 없음) 루프가 상한까지 지속되던 근본원인.
+#   autoloop 이 자동실행할 대상 = 현재턴 제외한 🔄/⏳ 목표. 그게 0이면 루프는 할 일이 없다 → 종료.
+_pending_others = [i for i, g in enumerate(result['goals'])
+                   if g['status'] in ('🔄진행중', '⏳대기') and i != cur]
+all_resolved = (len(_pending_others) == 0)
 result['verdict'] = 'COMPLETE' if (all_resolved or gap >= THRESHOLD) else 'INCOMPLETE'
 
 # 사람용 요약(stderr)
@@ -159,6 +188,7 @@ for i, g in enumerate(result['goals'], 1):
 q = [x for x in ([f'게이트{gb}' if gb else '', f'지적{pb}' if pb else '', f'미검증{unv}' if unv else '']) if x]
 qnote = f' · ⚠️보고품질 이슈({", ".join(q)}, 완료율과 별도)' if q else ''
 e(f'Gap(완료율): {gap}% (목표 {eff}/{result["total"]} 해결){qnote}')
+e(f'정직Gap(증거보유): {result["honest_gap"]}% (증거 {result["evidence_resolved"]}/{result["total"]}) — 영수증+T1 있는 목표만')
 e(f'판정: {result["verdict"]}' + (' — 모든 목표 ✅해결' if all_resolved
    else ' — 진행중/미완 목표 존재' if result['verdict']=='INCOMPLETE' else ''))
 

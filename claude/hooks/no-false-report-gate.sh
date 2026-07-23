@@ -298,6 +298,19 @@ COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
 COUNT=$((COUNT + 1))
 echo "$COUNT" > "$COUNTER_FILE" 2>/dev/null
 
+# [2026-07-23 Fix B — 자동 자기학습 포착] 게이트 차단을 loop-lesson 캐시에 자동 기록.
+# 수동 add 의존 제거: 실수하면 자동으로 잡힌다. 세션·시그니처별 1회만(중복방지).
+LL="$HOME/.claude/hooks/loop-lesson.sh"
+if [ -x "$LL" ]; then
+    _sig=$(printf '%s\n' "${VIOLATIONS[@]}" | grep -oE '\[G[0-9]+\]' | head -1)
+    _sig="false-report-${_sig:-gate}"
+    _dd="/tmp/nco-ll-seen-${NCO_SESSION_ID:-$$}-$(printf '%s' "$_sig" | tr -c 'A-Za-z0-9' '_')"
+    if [ ! -f "$_dd" ]; then
+        : > "$_dd"
+        bash "$LL" add "$_sig" "거짓보고 게이트 차단(누적 ${COUNT}회): ${VIOLATIONS[0]}" >/dev/null 2>&1
+    fi
+fi
+
 # 출력
 {
     echo ""

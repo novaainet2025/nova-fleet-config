@@ -32,6 +32,11 @@ LL="$H/loop-lesson.sh"
 if [ -x "$LL" ]; then
   o=$(bash "$LL" inject 2>/dev/null); [ -n "$o" ] && OUT="${OUT}${o}"$'\x1e'
 fi
+# 미해결 이월 강제 표면화 (Fix C) — verify/승인 전까지 안 사라짐
+CO="$H/carryover.sh"
+if [ -x "$CO" ]; then
+  o=$(bash "$CO" inject 2>/dev/null); [ -n "$o" ] && OUT="${OUT}${o}"$'\x1e'
+fi
 
 # 평문/JSON 혼합을 단일 JSON additionalContext로 병합
 printf '%s' "$OUT" | python3 -c '
