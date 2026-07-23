@@ -297,6 +297,17 @@ fi
 COUNT=$(cat "$COUNTER_FILE" 2>/dev/null || echo 0)
 COUNT=$((COUNT + 1))
 echo "$COUNT" > "$COUNTER_FILE" 2>/dev/null
+# [2026-07-23 Fix] 세션 스코프 카운터 — 전역 파일은 여러 세션이 race해 숫자가 오염됨
+#   (feedback_hook_shared_state_concurrency). '이번 세션' 정확값을 별도 파일로 유지.
+_GSID=$(printf '%s' "${INPUT:-}" | python3 -c 'import sys,json
+try: print(json.load(sys.stdin).get("session_id") or "")
+except: print("")' 2>/dev/null)
+SCOUNT=""
+if [ -n "$_GSID" ]; then
+    SCF="$HOME/.claude/.false-report-count-$_GSID"
+    SCOUNT=$(cat "$SCF" 2>/dev/null || echo 0); SCOUNT=$((SCOUNT + 1))
+    echo "$SCOUNT" > "$SCF" 2>/dev/null
+fi
 
 # [2026-07-23 Fix B — 자동 자기학습 포착] 게이트 차단을 loop-lesson 캐시에 자동 기록.
 # 수동 add 의존 제거: 실수하면 자동으로 잡힌다. 세션·시그니처별 1회만(중복방지).
@@ -307,7 +318,7 @@ if [ -x "$LL" ]; then
     _dd="/tmp/nco-ll-seen-${NCO_SESSION_ID:-$$}-$(printf '%s' "$_sig" | tr -c 'A-Za-z0-9' '_')"
     if [ ! -f "$_dd" ]; then
         : > "$_dd"
-        bash "$LL" add "$_sig" "거짓보고 게이트 차단(누적 ${COUNT}회): ${VIOLATIONS[0]}" >/dev/null 2>&1
+        bash "$LL" add "$_sig" "거짓보고 게이트 차단(이번 세션 ${SCOUNT:-?}회): ${VIOLATIONS[0]}" >/dev/null 2>&1
     fi
 fi
 
@@ -315,7 +326,7 @@ fi
 {
     echo ""
     echo "════════════════════════════════════════════════════════════"
-    echo "🚫 거짓·미검증 보고 차단 게이트 위반 (모드: $MODE, 누적: ${COUNT}회)"
+    echo "🚫 거짓·미검증 보고 차단 게이트 위반 (모드: $MODE, 이번 세션 ${SCOUNT:-$COUNT}회 · 전체 ${COUNT}회)"
     echo "════════════════════════════════════════════════════════════"
     for v in "${VIOLATIONS[@]}"; do
         echo "  • $v"
