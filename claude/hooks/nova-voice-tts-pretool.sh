@@ -44,7 +44,8 @@ fi
 TMP_JSON=$(mktemp /tmp/nova-hook-XXXXXX)
 cat > "$TMP_JSON"
 
-MSG=$(python3 - "$TMP_JSON" 2>/dev/null << 'PYEOF2'
+get_msg() {
+python3 - "$TMP_JSON" 2>/dev/null << 'PYEOF2'
 import json, sys, re, os
 
 try:
@@ -153,7 +154,8 @@ else:
 
 print(msg[:90])
 PYEOF2
-)
+}
+MSG=$(get_msg)
 
 rm -f "$TMP_JSON"
 [ -z "$MSG" ] && exit 0
