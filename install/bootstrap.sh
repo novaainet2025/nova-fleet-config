@@ -829,7 +829,6 @@ echo "    ANTHROPIC_API_KEY=sk-ant-...    ← Claude"
 echo "    OPENAI_API_KEY=sk-...           ← Codex"
 echo "    OPENROUTER_API_KEY=sk-or-...    ← OpenRouter"
 echo "    GEMINI_API_KEYS=AIzaSy...       ← Gemini"
-echo "    NVIDIA_API_KEY=nvapi-...        ← NVIDIA NIM"
 echo "    GITHUB_TOKEN=ghp_...            ← GitHub/Copilot"
 
 # ══════════════════════════════════════════════════════════════════════════
