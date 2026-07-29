@@ -344,7 +344,7 @@
       "type": "api",
       "role": "Generalist",
       "score": 75,
-      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "model": "openai/gpt-oss-120b:free",
       "command": null,
       "args": [],
       "endpoint": "https://openrouter.ai/api/v1",
@@ -357,7 +357,6 @@
         "cooldownMs": 60000
       },
       "freeModels": [
-        "nvidia/nemotron-3-super-120b-a12b:free",
         "openai/gpt-oss-120b:free",
         "google/gemma-3-27b-it:free",
         "google/gemma-4-31b-it:free",
@@ -659,74 +658,6 @@
         "args": [
           "--version"
         ],
-        "timeout": 5000
-      }
-    },
-    {
-      "id": "nvidia",
-      "name": "NVIDIA NIM API",
-      "enabled": true,
-      "type": "api",
-      "role": "Reasoner",
-      "score": 88,
-      "model": "nvidia/llama-3.3-nemotron-super-49b-v1",
-      "command": null,
-      "args": [],
-      "endpoint": "https://integrate.api.nvidia.com/v1",
-      "apiKeyRef": "NVIDIA_API_KEY",
-      "keyRotation": {
-        "enabled": true,
-        "envVar": "NVIDIA_API_KEY",
-        "delimiter": ",",
-        "maxKeys": 20,
-        "cooldownMs": 60000
-      },
-      "freeModels": [
-        "nvidia/llama-3.3-nemotron-super-49b-v1",
-        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
-        "nvidia/llama-3.1-nemotron-ultra-253b-v1",
-        "deepseek-ai/deepseek-v4-flash",
-        "deepseek-ai/deepseek-v4-pro",
-        "qwen/qwen3-next-80b-a3b-thinking",
-        "qwen/qwen3-coder-480b-a35b-instruct",
-        "qwen/qwen3.5-397b-a17b",
-        "meta/llama-3.3-70b-instruct",
-        "meta/llama-4-maverick-17b-128e-instruct",
-        "mistralai/mistral-large-3-675b-instruct-2512",
-        "mistralai/mistral-nemotron",
-        "nvidia/nemotron-3-super-120b-a12b",
-        "nvidia/nemotron-4-340b-instruct",
-        "moonshotai/kimi-k2.6",
-        "minimaxai/minimax-m2.7"
-      ],
-      "env": {},
-      "concurrency": 4,
-      "rateLimitRpm": 10,
-      "cost": "free",
-      "capabilities": [
-        "reasoning",
-        "analysis",
-        "debugging",
-        "decision",
-        "logic",
-        "code",
-        "architecture-review"
-      ],
-      "permissions": {
-        "canInitiateCollaboration": true,
-        "canDelegateToOthers": false,
-        "canSupervise": false,
-        "canFinalApprove": false
-      },
-      "persona": {
-        "systemPrompt": "You are the Reasoning Specialist of the NCO AI team. You excel at complex multi-step logical analysis, mathematical reasoning, algorithm evaluation, and decision-tree validation. Always use <thinking> blocks for chain-of-thought reasoning before providing final answers. You fill the critical gap between design (Architect) and validation (Validator) by providing deep logical reasoning.",
-        "tone": "analytical",
-        "style": "rigorous"
-      },
-      "note": "NVIDIA NIM API — free credits ($25/account). Primary: Nemotron-Super-49B (reasoning). To add more keys: comma-separate in NVIDIA_API_KEY env var. Models updated: 2026-05-12. Update script: curl https://integrate.api.nvidia.com/v1/models | jq.",
-      "healthCheck": {
-        "type": "api",
-        "url": "https://integrate.api.nvidia.com/v1/models",
         "timeout": 5000
       }
     }

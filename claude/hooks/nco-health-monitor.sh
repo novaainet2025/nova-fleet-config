@@ -82,7 +82,7 @@ for pid, cmd in cli_checks:
     except Exception as e:
         cli_status[pid] = {'binary_ok': False, 'version': f'ERR: {e}'[:80]}
 
-# API 프로바이더 체크 (openrouter / nvidia / ollama)
+# API 프로바이더 체크 (openrouter / ollama)
 api_checks = {}
 
 # Ollama
@@ -100,18 +100,12 @@ try:
 except Exception as e:
     api_checks['openrouter'] = {'ok': False, 'error': str(e)[:80]}
 
-# NVIDIA
-try:
-    r = urllib.request.urlopen('https://integrate.api.nvidia.com/v1/models', timeout=4)
-    api_checks['nvidia'] = {'ok': r.status == 200, 'status': r.status}
-except Exception as e:
-    api_checks['nvidia'] = {'ok': False, 'error': str(e)[:80]}
 
 # 데몬 상태 매핑
 daemon_map = {d['id']: d for d in daemons.get('daemons', [])}
 
 providers = {}
-for pid in ['claude-code','opencode','agy','codex','cursor-agent','copilot','openrouter','nvidia','ollama']:
+for pid in ['claude-code','opencode','agy','codex','cursor-agent','copilot','openrouter','ollama']:
     d = daemon_map.get(pid, {})
     p = {
         'id': pid,
@@ -240,8 +234,6 @@ for pid, p in d['providers'].items():
             actions.append('Windows ollama 서비스 확인 (포트 11434, host.docker.internal)')
         elif pid == 'openrouter':
             actions.append('OPENROUTER_API_KEYS 환경변수 + 네트워크 확인')
-        elif pid == 'nvidia':
-            actions.append('NVIDIA_API_KEY 환경변수 + 네트워크 확인')
 
     # NCO 알려진 패턴 (capabilities.json known_issues)
     known = {

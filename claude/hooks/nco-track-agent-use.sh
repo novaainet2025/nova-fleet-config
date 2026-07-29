@@ -197,7 +197,7 @@ if 'Gap 분석' in cmd_env or 'gap analysis' in cmd_env.lower() or '커버율' i
 # nco-task 에이전트 기반 review/verification 단계 마킹 (env 변수 사용)
 task_agent = os.environ.get('NCO_TASK_AGENT', '').lower().replace('-', '_')
 review_agents  = {'cursor_agent', 'cursor', 'review'}
-verify_agents  = {'ollama', 'vllm', 'gemma', 'qwen', 'hermes', 'mlx', 'remote_mlx', 'nvidia', 'openrouter', 'verify'}
+verify_agents  = {'ollama', 'vllm', 'gemma', 'qwen', 'hermes', 'openrouter', 'verify'}
 impl_agents    = {'codex', 'aider'}       # Engineer
 design_agents  = {'opencode'}             # Architect
 if task_agent in review_agents:

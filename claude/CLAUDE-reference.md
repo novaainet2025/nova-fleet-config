@@ -36,7 +36,7 @@ claude mcp add gbrain -- ~/.bun/bin/gbrain serve
 | `gbrain doctor` | 상태 진단 |
 | `gbrain serve` / `serve --http` | MCP 서버 (stdio / HTTP, 포트 6200·6300 제외) |
 
-에이전트 역할: copilot=`gbrain search` 사전 컨텍스트 · nvidia=`gbrain think` 추론 인풋 · cursor-agent=`gbrain search` 코드 컨텍스트.
+에이전트 역할: copilot=`gbrain search` 사전 컨텍스트 · opencode=`gbrain think` 추론 인풋 · cursor-agent=`gbrain search` 코드 컨텍스트.
 nova-ax 연동: `.env`에 `GBRAIN_MCP_URL=stdio` (HTTP 모드면 `http://localhost:<포트>`).
 embedding(선택): `gbrain config set embedding_model openai:text-embedding-3-large` 또는 로컬 `ollama:nomic-embed-text`. 미설정 시 BM25 키워드 검색만(정상 운영 가능).
 

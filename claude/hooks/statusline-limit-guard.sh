@@ -7,7 +7,7 @@
 # 서킷오픈의 모든 사유(quota / 일시오류 / empty completion / connection / generic
 # cooldown)를 포괄해, reason:"generic"(오류성 오픈)까지 "리밋"으로 오표시한다.
 # 정답: 진짜 리밋은 gate.reason in (quota,rate_limit,usage_limit) 로만 판정.
-#   실측(2026-07-06): cursor-agent/copilot=quota(진짜), claude-code/openrouter/nvidia
+#   실측(2026-07-06): cursor-agent/copilot=quota(진짜), claude-code/openrouter
 #   =generic(오탐). 상태바 5개 오표시 → 2개로 수정.
 #
 # 본 가드는 SessionStart 훅 체인에 포함되어 매 세션 시작 시 canonical + 배포본

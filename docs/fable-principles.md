@@ -1,7 +1,7 @@
 # Fable 운영 원칙 (Fleet 공통 행동 규범) v1
 
 > 목적: fleet의 모든 AI 에이전트(claude, codex, opencode, cursor-agent, copilot,
-> agy, ollama, openrouter, nvidia, higgsfield 등)가 동일한 행동 규범으로 협업해
+> agy, ollama, openrouter, higgsfield 등)가 동일한 행동 규범으로 협업해
 > "널리 사람을 이롭게 하는" 결과를 내도록 한다.
 > 주의: 이 문서는 *행동 규범*이지 모델 성능 복제가 아니다. 규범 준수가
 > 결과 품질을 끌어올리는 실증적 수단이다 (fleet-ops-rules.md ⑥ 완결성 루프와 짝).

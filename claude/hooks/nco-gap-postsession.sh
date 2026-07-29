@@ -5,7 +5,7 @@
 # 디자인:
 #   - Stop 훅을 블로킹하지 않음 (백그라운드 spawn 후 즉시 exit 0)
 #   - 변경 파일이 없으면 스킵
-#   - NCO로 nco-task cursor-agent (실패 시 nvidia) 호출 → 결과를 로그에 기록
+#   - NCO로 nco-task cursor-agent (실패 시 ollama) 호출 → 결과를 로그에 기록
 #   - 다음 SessionStart의 improvement-inject가 이 로그를 픽업해서 컨텍스트로 주입
 #
 # 기존 Stop 훅의 advisor-stop·memory-snapshot과 별도로 동작.
@@ -76,11 +76,11 @@ fi
     CHANGED_LIST=$(echo "$CHANGED" | tr '\n' ' ' | head -c 1500)
 
     # 리밋(gate.available===false) 프로바이더는 건너뛴다 — gated에 배정하면 확정 실패
-    # (사용자 지적 + ERR-013 단일 SoT: cursor-agent/nvidia 등 리밋 시 codex 등 가용으로 직행)
+    # (사용자 지적 + ERR-013 단일 SoT: cursor-agent 등 리밋 시 codex 등 가용으로 직행)
     _GAP_AGENTS=$(curl -s -m 2 http://localhost:6200/api/agents 2>/dev/null)
     # cursor-agent(리뷰어) 우선, gated면 skip → 무료 로컬 워커(ollama/hermes) 우선, 최후에만 유료 codex
-    # (사용자 directive "워커=무료 로컬 우선" + tier-policy quality=[cursor-agent,ollama,nvidia])
-    for AI in cursor-agent ollama hermes nvidia codex; do
+    # (사용자 directive "워커=무료 로컬 우선" + tier-policy quality=[cursor-agent,ollama])
+    for AI in cursor-agent ollama hermes codex; do
         if printf '%s' "$_GAP_AGENTS" | python3 -c "
 import json,sys
 # 안정적 가용(available===True AND circuit==closed)일 때만 시도, 그 외엔 skip.

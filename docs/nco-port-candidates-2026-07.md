@@ -29,7 +29,7 @@
 1. **실패 분류기 + 백오프** (swarmclaw): 결과에 error 있음 OR text 공백 → 실패. 연속실패 카운터, 10s→5min 지수 백오프, MAX 10회 시 자동 비활성+통지. NCO invocation 종결 로직에 삽입.
 2. **태스크 수명주기 상태기계 + reconciler** (optio): QUEUED→PROVISIONING→RUNNING→FAILED/COMPLETED 명시 전이 + 주기 resync가 ground truth에서 상태 재계산(CAS). "영구 running" 원천 차단.
 3. **멱등 cancel/drain + dead-letter** (claudectl/swarmclaw): cancel API 구현, 시작 시 orphan 1회 재큐잉, 반복 실패 시 dead-letter + `POST /tasks/:id/retry`.
-4. **credential preflight** (swarmclaw): API형 프로바이더 위임 전 키 해결 확인 — 오늘의 nvidia/openrouter 401 류를 위임 전에 잡음.
+4. **credential preflight** (swarmclaw): API형 프로바이더 위임 전 키 해결 확인 — 오늘의 openrouter 401 류를 위임 전에 잡음.
 
 ## 2. P1 — 검증 체계 (거짓보고 방지 규칙의 코드화)
 

@@ -114,7 +114,7 @@ retrieval-reflex는 Claude가 brain을 **언제** 조회할지 판단하는 정�
 | NCO 에이전트 | gbrain 활용 방법 |
 |---|---|
 | `copilot` (Researcher) | `gbrain search` 로 사전 컨텍스트 조회 후 리서치 |
-| `nvidia` (Reasoner) | `gbrain think` 결과를 추론 인풋으로 사용 |
+| `opencode` (Architect) | `gbrain think` 결과를 추론 인풋으로 사용 |
 | `cursor-agent` (Reviewer) | `gbrain search` 로 관련 코드/문서 컨텍스트 확인 |
 | `opencode` (Architect) | brain에서 아키텍처 결정 이력 조회 |
 
