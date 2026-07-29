@@ -326,7 +326,8 @@ fi
 # scripts/ 배포 (hooks가 {{HOME}}/projects/scripts/ 참조) — 템플릿 치환
 if [ $DRY -eq 0 ] && [ -d "$ROOT/scripts" ]; then
   mkdir -p "$HOME/projects/scripts"
-  for sf in "$ROOT"/scripts/*.sh; do [ -f "$sf" ] || continue; sub <"$sf" >"$HOME/projects/scripts/$(basename "$sf")"; chmod +x "$HOME/projects/scripts/$(basename "$sf")"; done
+  # .py 도 함께 배포한다 — nco-progress.py 처럼 커맨드가 직접 부르는 파이썬 스크립트가 있다
+  for sf in "$ROOT"/scripts/*.sh "$ROOT"/scripts/*.py; do [ -f "$sf" ] || continue; sub <"$sf" >"$HOME/projects/scripts/$(basename "$sf")"; chmod +x "$HOME/projects/scripts/$(basename "$sf")"; done
   log "scripts 배포: ~/projects/scripts/"
 fi
 
@@ -370,7 +371,12 @@ log "provider 점검:"; while read -r p ver _; do [ -z "${p:-}" ] && continue; c
   # bun 기반 도구는 ~/.bun/bin도 함께 탐색 (PATH 미등록 대응)
   { command -v "$p" >/dev/null 2>&1 || [ -x "$HOME/.bun/bin/$p" ]; } && echo "  $p ✓" || echo "  $p ✗ 설치필요(${ver:-})"; done < "$ROOT/providers.list"
 # NCO ollama 자동감지 → 머신 오버레이(ai-providers.local.json)에 enabled 기록 (§C ②OS분기)
-#   Mac(Darwin)+MLX=false, ollama 미응답=false, ollama 응답=true(단 Mac MLX 우선시 false 유지)
+#   ollama 미응답=false, ollama 응답=true
+#   2026-07-29 변경(사용자 결정 "mlx와 nvidia 모두 제거"): 기존 "Mac+MLX면 ollama 비활성"
+#   게이트를 제거했다. 게이트는 "mlx 파이썬 라이브러리가 import 되는가"를 "NCO가 ollama 대신
+#   MLX로 라우팅할 수 있는가"의 대리 지표로 썼으나, NCO에는 mlx 프로바이더가 등록된 적이 없다
+#   (config/런타임 /api/ai-providers 모두 8개, mlx 0건). 결과적으로 이 Mac에서 유일하게 살아
+#   있는 로컬 워커를 끄고 존재하지 않는 대체재로 넘겨, 매 fleet-sync마다 ollama가 뒤집혔다.
 #   2026-07-03 변경: 추적 SSOT(ai-providers.json) 직접 write는 매 세션 트리 오염 → pull 충돌
 #   유발(subnote UU·snt 사건 계열)이라 git 비추적 오버레이로 이동. SSOT는 읽기도 쓰기도 안 함.
 #   NCO 런타임(d812312 loadProviders)이 overrides.<id>를 provider별 shallow merge로 읽는다.
@@ -380,12 +386,10 @@ if [ $DRY -eq 0 ] && command -v python3 >/dev/null 2>&1 && [ -f "$NCO_CFG" ]; th
   OLLAMA_UP=0; curl -s -m 3 http://localhost:11434/api/tags >/dev/null 2>&1 && OLLAMA_UP=1
   # 저사양 머신 sentinel: ~/.claude/.nco-no-ollama 존재 시 강제 비활성 (외장GPU 없음·RAM 8GB 미만)
   [ -f "$HOME/.claude/.nco-no-ollama" ] && OLLAMA_UP=0
-  IS_MAC=0; [ "$(uname -s)" = Darwin ] && IS_MAC=1
-  HAS_MLX=0; python3 -c 'import mlx' >/dev/null 2>&1 && HAS_MLX=1
-  python3 - "$NCO_LOCAL_CFG" "$OLLAMA_UP" "$IS_MAC" "$HAS_MLX" "$(date +%Y-%m-%d)" << 'PYEOF'
+  python3 - "$NCO_LOCAL_CFG" "$OLLAMA_UP" "$(date +%Y-%m-%d)" << 'PYEOF'
 import json, sys
 from pathlib import Path
-cfg, ollama_up, is_mac, has_mlx, today = sys.argv[1], sys.argv[2]=="1", sys.argv[3]=="1", sys.argv[4]=="1", sys.argv[5]
+cfg, ollama_up, today = sys.argv[1], sys.argv[2]=="1", sys.argv[3]
 path = Path(cfg)
 if path.exists():
     try:
@@ -396,21 +400,21 @@ if path.exists():
 else:
     d = {"_readme": ["머신 정책 오버레이 (git 비추적) — 공유 ai-providers.json은 중립 SSOT"], "overrides": {}}
 ov = d.setdefault("overrides", {})
-# Mac+MLX=disabled, 비Mac+ollama없음=disabled, 비Mac+ollama있음=enabled
-target = False if (is_mac and has_mlx) else ollama_up
+# ollama 응답 여부만으로 결정한다 (OS/MLX 분기 없음)
+target = ollama_up
 entry = dict(ov.get("ollama") or {})
 entry["enabled"] = target
 if not target:
-    entry["_reason"] = ("Mac — MLX(Apple Silicon) 우선" if (is_mac and has_mlx) else "ollama 미응답(localhost:11434)")
+    entry["_reason"] = "ollama 미응답(localhost:11434)"
     entry["_disabled_at"] = today
 else:
     entry.pop("_reason", None); entry.pop("_disabled_at", None)
 if ov.get("ollama") != entry:
     ov["ollama"] = entry  # 다른 overrides 키·_readme는 그대로 보존 (ollama만 갱신)
     path.write_text(json.dumps(d, indent=2, ensure_ascii=False) + "\n")
-    print(f"  [apply] overlay ollama enabled={target} (Mac={is_mac},MLX={has_mlx},up={ollama_up}) → {cfg}")
+    print(f"  [apply] overlay ollama enabled={target} (up={ollama_up}) → {cfg}")
 else:
-    print(f"  [apply] overlay ollama 변경없음 (enabled={target}, Mac={is_mac},MLX={has_mlx},up={ollama_up})")
+    print(f"  [apply] overlay ollama 변경없음 (enabled={target}, up={ollama_up})")
 PYEOF
 fi
 log "적용 완료 (dry=$DRY). settings/hooks 변경은 다음 세션부터 반영. 롤백: $DEST/_fleet-backup-*"
