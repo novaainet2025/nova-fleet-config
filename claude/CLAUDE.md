@@ -77,8 +77,8 @@ nco_task({ai,prompt}) · nco_parallel({prompt,providers}) · nco_conductor({prom
 | 에이전트 | 영역 |  | 에이전트 | 영역 |
 |---|---|---|---|---|
 | opencode | 설계·아키텍처 | | ollama | 검증·QA |
-| codex | 구현·버그·다중파일 | | nvidia | 복잡 추론 |
-| cursor-agent | 리뷰·보안 | | mlx | 로컬 코딩(무료) |
+| codex | 구현·버그·다중파일 | | hermes | 툴사용·함수호출(무료) |
+| cursor-agent | 리뷰·보안 | | ollama | 로컬 검증·QA |
 | agy | UI·패턴·설계 | | hermes | 툴사용·함수호출(무료) |
 | copilot | 리서치·문서 | | higgsfield | 이미지·영상 |
 

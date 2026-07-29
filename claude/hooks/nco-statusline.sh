@@ -126,7 +126,7 @@ except Exception: pass
     else
       # API 불가: 권위 신호(gate.available)를 못 얻으므로 divergent한 fallback(circuit/DB)으로
       # 캐시를 덮어쓰지 않는다. circuit_states는 gate.available와 다른 질문에 답해서
-      # mlx-오탐/openrouter-누락 같은 불일치를 유발했음(2026-07-05 근본수정, ERR-013).
+      # 퇴출 프로바이더 오탐과 활성 프로바이더 누락 같은 불일치를 유발했음(2026-07-05 근본수정, ERR-013).
       # → 최근(≤300s) last-good 캐시가 있으면 그대로 유지(self-correcting). 캐시가 없거나
       #   5분 이상 stale일 때만 최후수단으로 DB 추정.
       _plimit_f="${_CACHE_DIR}/provider-limits.txt"
@@ -164,8 +164,7 @@ except Exception: pass
     [ ! -f "$_NCO_ENV" ] && _NCO_ENV="$HOME/projects/nco/.env"
     [ ! -f "$_NCO_ENV" ] && _NCO_ENV=""
     _or_keys=$(grep '^OPENROUTER_API_KEYS=' "$_NCO_ENV" 2>/dev/null | cut -d= -f2 | tr ',' '\n' | grep -c .)
-    _nv_keys=$(grep '^NVIDIA_API_KEY=' "$_NCO_ENV" 2>/dev/null | cut -d= -f2 | tr ',' '\n' | grep -c .)
-    echo "OR:${_or_keys:-0}|NV:${_nv_keys:-0}" > "${_CACHE_DIR}/api-keys.txt" 2>/dev/null
+    echo "OR:${_or_keys:-0}" > "${_CACHE_DIR}/api-keys.txt" 2>/dev/null
 
     # nova-ax statusline (캐시만 — 빠른 경로에서 읽음)
     _AX_BASE="${NCO_AX_URL:-}"
@@ -223,9 +222,7 @@ _detect_backend() {
   [ -n "$STATUSLINE_INFERENCE_BACKEND" ] && { echo "$STATUSLINE_INFERENCE_BACKEND"; return; }
   local base_url="${ANTHROPIC_BASE_URL:-}"
   if echo "$base_url" | grep -qE "localhost|127\.0\.0\.1"; then
-    if [ "$(uname)" = "Darwin" ]; then echo "MLX"
-    else echo "OLL"
-    fi
+    echo "OLL"
     return
   fi
   echo ""
@@ -233,9 +230,6 @@ _detect_backend() {
 _BACKEND=$(_detect_backend)
 # "Ollama" (launch.sh 기본값) → 내부 표준 "OLL"로 정규화
 [ "$_BACKEND" = "Ollama" ] && _BACKEND="OLL"
-# MLX도 "mlx" 소문자로 올 경우 대비
-[ "$_BACKEND" = "mlx" ] && _BACKEND="MLX"
-
 # ── 세션 이름 감지 (PID 파일 기반 — NCO_NAME 오염 방지) ──────
 # ── 세션 이름 감지 (PID 파일 기반) ──────────────────────────
 # 버그 수정 2026-07-03: 가까운 조상(break) → 가장 먼 조상(no-break) 방식으로 통일.
@@ -580,8 +574,8 @@ while IFS='=' read -r key val; do
   esac
 done <<< "$_PARSED"
 
-# ── OLL/MLX 백엔드: 실제 Ollama 모델명 (캐시에서 읽기) ─────────
-if [ "$_BACKEND" = "OLL" ] || [ "$_BACKEND" = "MLX" ]; then
+# ── OLL 백엔드: 실제 Ollama 모델명 (캐시에서 읽기) ─────────────
+if [ "$_BACKEND" = "OLL" ]; then
   _OLLAMA_MODEL=$(cat "${_CACHE_DIR}/oll-model" 2>/dev/null)
   [ -n "$_OLLAMA_MODEL" ] && BRACKET="[${_BACKEND}:${_OLLAMA_MODEL}]"
   # 로컬 추론은 Anthropic rate limit 없음 — 하드코딩 폴백값 덮어쓰기
@@ -596,7 +590,7 @@ PROJECT_NAME=$(basename "${PROJECT_DIR:-project}")
 declare -A SHORT=(
   ["claude-code"]="Cla" ["opencode"]="Opn" ["agy"]="Agy"
   ["codex"]="Cdx" ["cursor-agent"]="Cur"
-  ["copilot"]="Cop" ["openrouter"]="ORT" ["nvidia"]="NIM"
+  ["copilot"]="Cop" ["openrouter"]="ORT"
   ["ollama"]="OLL" ["higgsfield"]="Hig"
 )
 
@@ -660,14 +654,14 @@ if not ids:
         pass
 
 if not ids:
-    fallback = ["claude-code","opencode","agy","codex","cursor-agent","copilot","openrouter","nvidia","ollama","higgsfield"]
+    fallback = ["claude-code","opencode","agy","codex","cursor-agent","copilot","openrouter","ollama","higgsfield"]
     ids = [x for x in fallback if x not in evicted]
 
 print("\n".join(ids))
 PYEOF
 )
 if [ "${#ORDER[@]}" -eq 0 ]; then
-  ORDER=("claude-code" "opencode" "agy" "codex" "cursor-agent" "copilot" "openrouter" "nvidia" "ollama" "higgsfield")
+  ORDER=("claude-code" "opencode" "agy" "codex" "cursor-agent" "copilot" "openrouter" "ollama" "higgsfield")
 fi
 
 # ── 에이전트 상태 표시 ─────────────────────────────────────────
@@ -849,7 +843,7 @@ echo -e "  ${API_C} ${WS_C} ${GR}[${RST} ${AI_DISPLAY}${GR}]${RST}${G}${ONLINE}$
 echo -e "  ${GR}NCO${RST} $(nco_bar $_NCO_PCT) $(nco_pct_color $_NCO_PCT) ${GR}(NCO:${RST}${_NCO_CALLS}${G}↑${RST} ${GR}직접:${RST}${_DIRECT_EDITS}${Y}↓${RST}${GR})${RST}"
 
 # 줄4-5: 사용량 + 리셋 시간 + 리밋 프로바이더
-if [ "$_BACKEND" = "OLL" ] || [ "$_BACKEND" = "MLX" ]; then
+if [ "$_BACKEND" = "OLL" ]; then
   echo -e "  ${G}local${RST} ${GR}Ctx:${RST}$(pct_color $CTX_PCT)"
 else
   # 리밋 프로바이더 라벨 수집
@@ -858,6 +852,11 @@ else
   if [ -f "$_PLIMIT_FILE" ] && [ -s "$_PLIMIT_FILE" ]; then
     while IFS= read -r _lim_id; do
       [ -z "$_lim_id" ] && continue
+      # 현재 로스터(ORDER)에 있는 프로바이더만 리밋 표시 — 제거된 프로바이더의
+      # stale circuit_states open row가 DB 폴백을 통해 ⛔로 오표시되던 문제 방지(자기교정).
+      _in_order=0
+      for _o in "${ORDER[@]}"; do [ "$_o" = "$_lim_id" ] && _in_order=1 && break; done
+      [ "$_in_order" = "1" ] || continue
       _lim_label="${SHORT[$_lim_id]}"
       if [ -z "$_lim_label" ]; then
         _raw=$(echo "$_lim_id" | tr -cd 'a-zA-Z0-9' | cut -c1-3)
