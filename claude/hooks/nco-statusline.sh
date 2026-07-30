@@ -179,15 +179,6 @@ except: pass" 2>/dev/null)
       [ -n "$_ax_text" ] && printf '%s' "$_ax_text" > "${_CACHE_DIR}/ax-text" 2>/dev/null
     fi
 
-    # Higgsfield (결과를 캐시에 저장)
-    _hf_status=2
-    if command -v higgsfield &>/dev/null; then
-      bash "$HOME/projects/scripts/higgsfield-auth-check.sh" > /dev/null 2>&1 && _hf_status=0 || _hf_status=1
-    fi
-    printf '%s' "$_hf_status" > "${_CACHE_DIR}/hf-status" 2>/dev/null
-    _hf_cred=$(bash "$HOME/projects/scripts/higgsfield-credits.sh" 2>/dev/null)
-    [ -n "$_hf_cred" ] && printf '%s' "$_hf_cred" > "${_CACHE_DIR}/hf-cred" 2>/dev/null
-
     # Ollama 모델 (proxy /health 경유)
     _oll_url=$(curl -s -m 1 "http://localhost:4100/health" 2>/dev/null \
       | python3 -c "import sys,json
@@ -591,7 +582,7 @@ declare -A SHORT=(
   ["claude-code"]="Cla" ["opencode"]="Opn" ["agy"]="Agy"
   ["codex"]="Cdx" ["cursor-agent"]="Cur"
   ["copilot"]="Cop" ["openrouter"]="ORT"
-  ["ollama"]="OLL" ["higgsfield"]="Hig"
+  ["ollama"]="OLL"
 )
 
 # ── NCO 연결 상태 (캐시에서 읽기) ────────────────────────────
@@ -654,14 +645,14 @@ if not ids:
         pass
 
 if not ids:
-    fallback = ["claude-code","opencode","agy","codex","cursor-agent","copilot","openrouter","ollama","higgsfield"]
+    fallback = ["claude-code","opencode","agy","codex","cursor-agent","copilot","openrouter","ollama"]
     ids = [x for x in fallback if x not in evicted]
 
 print("\n".join(ids))
 PYEOF
 )
 if [ "${#ORDER[@]}" -eq 0 ]; then
-  ORDER=("claude-code" "opencode" "agy" "codex" "cursor-agent" "copilot" "openrouter" "ollama" "higgsfield")
+  ORDER=("claude-code" "opencode" "agy" "codex" "cursor-agent" "copilot" "openrouter" "ollama")
 fi
 
 # ── 에이전트 상태 표시 ─────────────────────────────────────────
@@ -903,31 +894,8 @@ for l in d.get('limits',[]):
   echo -e "  ${GR}↻${RST} ${GR}1일${RST} ${DIM}$(fmt_reset $DAY_RESET)${RST} ${GR}·${RST} ${GR}주별${RST} ${DIM}$(fmt_reset $WEEK_RESET)${RST}"
 fi
 
-# 줄6: Higgsfield + AX
-_HF_STATUS=$(cat "${_CACHE_DIR}/hf-status" 2>/dev/null); _HF_STATUS=${_HF_STATUS:-2}
-_HF_CRED=$(cat "${_CACHE_DIR}/hf-cred" 2>/dev/null)
-IFS='|' read -r _HF_C _HF_PLAN _HF_SPEND <<< "$_HF_CRED"
-_HF_DISP=""
-_HF_VER=""
-command -v higgsfield &>/dev/null && _HF_VER=$(higgsfield --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-case "$_HF_STATUS" in
-  *$'\n'0|0)
-    _hf_parts="${G}Hig${RST}"
-    [ -n "$_HF_VER" ] && _hf_parts="${_hf_parts} ${DIM}v${_HF_VER}${RST}"
-    _hf_parts="${_hf_parts} ${GR}·${RST} ${G}online${RST}"
-    [ -n "$_HF_C" ] && _hf_parts="${_hf_parts} ${GR}·${RST} ${C}${_HF_C}${RST} ${GR}cr${RST}"
-    [ -n "$_HF_SPEND" ] && _hf_parts="${_hf_parts} ${GR}·${RST} ${GR}오늘${RST} ${Y}${_HF_SPEND}${RST}"
-    _HF_DISP="$_hf_parts"
-    ;;
-  *$'\n'1|1)
-    _hf_parts="${Y}Hig${RST}"
-    [ -n "$_HF_VER" ] && _hf_parts="${_hf_parts} ${DIM}v${_HF_VER}${RST}"
-    _hf_parts="${_hf_parts} ${GR}·${RST} ${R}expired${RST}"
-    _HF_DISP="$_hf_parts"
-    ;;
-esac
+# 줄6: AX
 _AX_TEXT=$(cat "${_CACHE_DIR}/ax-text" 2>/dev/null)
 _AX_LINE1=$(echo "$_AX_TEXT" | head -1)
-[ -n "$_HF_DISP" ] && echo -e "  ${_HF_DISP}"
 [ -n "$_AX_LINE1" ] && echo -e "  ${_AX_LINE1}"
 exit 0
