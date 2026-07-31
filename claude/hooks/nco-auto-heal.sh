@@ -72,7 +72,12 @@ esac
 # 첫 줄(핵심 에러 메시지)만 사용 + 숫자/경로 제거로 정규화.
 FINGERPRINT=$(printf '%s' "$STDERR_TEXT" | head -1 | sed -E 's#/[a-zA-Z0-9_./-]+#<path>#g; s#[0-9]+#<n>#g')
 SIG_HASH=$(printf '%s|%s' "$PATTERN" "$FINGERPRINT" | shasum -a 256 2>/dev/null | cut -c1-16)
+# shasum 이 없을 때의 폴백. md5 는 BSD 전용이라 Linux/WSL 에서는 md5sum 이어야 한다.
+# 둘 다 없으면 SIG_HASH 가 빈 문자열이 되어 DEDUP_FILE 이 디렉터리 경로가 되고
+# 24h dedup 이 조용히 무력화되므로, 최후에는 정규화된 문자열 자체를 키로 쓴다.
+[ -z "$SIG_HASH" ] && SIG_HASH=$(printf '%s|%s' "$PATTERN" "$FINGERPRINT" | md5sum 2>/dev/null | cut -c1-16)
 [ -z "$SIG_HASH" ] && SIG_HASH=$(printf '%s|%s' "$PATTERN" "$FINGERPRINT" | md5 2>/dev/null | cut -c1-16)
+[ -z "$SIG_HASH" ] && SIG_HASH=$(printf '%s|%s' "$PATTERN" "$FINGERPRINT" | tr -c 'a-zA-Z0-9' '_' | cut -c1-40)
 DEDUP_FILE="${DEDUP_DIR}/${SIG_HASH}"
 
 # check-and-append 임계구역을 mkdir 원자적 락으로 보호(cursor-agent 리뷰 MEDIUM: race condition 대응).

@@ -23,7 +23,10 @@ echo "━━━ [$(date '+%m-%d %H:%M')] fleet-session-watchdog ━━━"
 
 anomalies=0; checked=0
 for tx in $(ls -t "$HOME/.claude/projects/${PROJSLUG}"/*.jsonl 2>/dev/null); do
-    mt=$(stat -f %m "$tx" 2>/dev/null || echo "$NOW")
+    # mtime: Linux(GNU) 는 stat -c %Y, macOS(BSD) 는 stat -f %m.
+    # GNU 폴백이 없으면 Linux/WSL 에서 항상 "$NOW" 가 되어 age=0 → 40분+ idle 스킵이
+    # 통째로 무력화되고 비활성 세션까지 전부 검사하게 된다.
+    mt=$(stat -c %Y "$tx" 2>/dev/null || stat -f %m "$tx" 2>/dev/null || echo "$NOW")
     age=$(( (NOW - mt) / 60 ))
     [ "$age" -gt 40 ] && continue   # 40분+ idle = 비활성 스킵
     sid=$(basename "$tx" .jsonl)
