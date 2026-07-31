@@ -6,7 +6,6 @@
 #   /nco-progress cmd      # 명령어 워크플로우만 표시
 #   /nco-progress 5        # 5초 간격으로 갱신
 
-# ```bash
 ARG="${ARGUMENTS:-}"
 
 if [ "$ARG" = "once" ]; then
@@ -21,4 +20,3 @@ elif echo "$ARG" | grep -qE '^[0-9]+$'; then
 else
   python3 ~/projects/scripts/nco-progress.py --once
 fi
-```
