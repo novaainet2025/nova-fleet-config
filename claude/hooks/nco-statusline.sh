@@ -130,7 +130,13 @@ except Exception: pass
       # → 최근(≤300s) last-good 캐시가 있으면 그대로 유지(self-correcting). 캐시가 없거나
       #   5분 이상 stale일 때만 최후수단으로 DB 추정.
       _plimit_f="${_CACHE_DIR}/provider-limits.txt"
-      _pl_mt=$(stat -f %m "$_plimit_f" 2>/dev/null || stat -c %Y "$_plimit_f" 2>/dev/null || echo 0)
+      # GNU stat은 -f가 "실패"하지 않고 파일시스템 정보를 출력해 산술식을 깨뜨린다.
+      # 산술 확장 오류는 비대화형 셸에서 치명적 → 워커 서브셸이 여기서 즉사했고
+      # 이후 단계(api-keys/ax-text/higgsfield/ollama)가 영구 동결됐다.
+      # 발동 조건: NCO 오프라인(else 분기) + provider-limits.txt 존재 → 매 사이클.
+      # (kangnote WSL bash -x 트레이스 실측 2026-07-31) 아래 _FW_MT와 동일하게 GNU(-c) 우선.
+      _pl_mt=$(stat -c %Y "$_plimit_f" 2>/dev/null || stat -f %m "$_plimit_f" 2>/dev/null || echo 0)
+      case "$_pl_mt" in ''|*[!0-9]*) _pl_mt=0;; esac
       _pl_age=$(( _now_ts - _pl_mt ))
       if { [ ! -f "$_plimit_f" ] || [ "$_pl_age" -gt 300 ]; } && [ -f "$_NCO_DB" ]; then
         {
@@ -828,7 +834,14 @@ TOTAL_AGENTS=${#ORDER[@]}
 echo -e "$_NAME_DISP $(bracket_color "$BRACKET") ${GR}📁${RST} ${W}${PROJECT_NAME}${RST}"
 
 # 줄2: api/ws + [ 에이전트 라벨 ]N/N
-echo -e "  ${API_C} ${WS_C} ${GR}[${RST} ${AI_DISPLAY}${GR}]${RST}${G}${ONLINE}${RST}/${GR}${TOTAL_AGENTS}${RST}"
+# NCO 오프라인이면 에이전트 로스터를 아예 렌더하지 않는다 — daemons.json은 _api=1일 때만
+# 갱신되므로 백엔드가 죽으면 마지막 스냅샷(예: 11/11 전원 온라인)이 api✗ 옆에 그대로 남아
+# 자기모순 표시가 된다. api/ws만 남겨 "지금 모른다"를 정직하게 표시. (사용자 지시 2026-07-31)
+if [ "$API_OK" = "1" ]; then
+  echo -e "  ${API_C} ${WS_C} ${GR}[${RST} ${AI_DISPLAY}${GR}]${RST}${G}${ONLINE}${RST}/${GR}${TOTAL_AGENTS}${RST}"
+else
+  echo -e "  ${API_C} ${WS_C}"
+fi
 
 # 줄3: NCO 사용률 바 + 화살표
 echo -e "  ${GR}NCO${RST} $(nco_bar $_NCO_PCT) $(nco_pct_color $_NCO_PCT) ${GR}(NCO:${RST}${_NCO_CALLS}${G}↑${RST} ${GR}직접:${RST}${_DIRECT_EDITS}${Y}↓${RST}${GR})${RST}"
@@ -840,7 +853,9 @@ else
   # 리밋 프로바이더 라벨 수집
   _LIMIT_DISP=""
   _PLIMIT_FILE="${_CACHE_DIR}/provider-limits.txt"
-  if [ -f "$_PLIMIT_FILE" ] && [ -s "$_PLIMIT_FILE" ]; then
+  # NCO 오프라인이면 ⛔ 라벨을 숨긴다 — 권위 신호(/api/agents gate)가 없어 캐시가 갱신되지
+  # 못하므로, 리밋이 이미 풀렸어도 해제할 방법이 없어 무기한 남는다. (사용자 지시 2026-07-31)
+  if [ "$API_OK" = "1" ] && [ -f "$_PLIMIT_FILE" ] && [ -s "$_PLIMIT_FILE" ]; then
     while IFS= read -r _lim_id; do
       [ -z "$_lim_id" ] && continue
       # 현재 로스터(ORDER)에 있는 프로바이더만 리밋 표시 — 제거된 프로바이더의
@@ -895,7 +910,17 @@ for l in d.get('limits',[]):
 fi
 
 # 줄6: AX
-_AX_TEXT=$(cat "${_CACHE_DIR}/ax-text" 2>/dev/null)
-_AX_LINE1=$(echo "$_AX_TEXT" | head -1)
+# ax-text는 6300이 응답할 때만 덮어써지므로 nova-ax가 죽으면 마지막 스냅샷이 영구히 남는다
+# (죽은 뒤에도 'NCO:✓ DB:✓' 같은 거짓 표시). 5분 넘게 갱신 안 됐으면 stale로 보고 숨김.
+# NCO 포트가 아니라 자체 신선도로 판정 — 두 서비스는 독립. (사용자 지시 2026-07-31)
+_AX_FILE="${_CACHE_DIR}/ax-text"
+_AX_MT=$(stat -c %Y "$_AX_FILE" 2>/dev/null || stat -f %m "$_AX_FILE" 2>/dev/null || echo 0)
+case "$_AX_MT" in ''|*[!0-9]*) _AX_MT=0;; esac
+_AX_AGE=$(( _now_ts - _AX_MT ))
+_AX_LINE1=""
+if [ "$_AX_AGE" -le 300 ]; then
+  _AX_TEXT=$(cat "$_AX_FILE" 2>/dev/null)
+  _AX_LINE1=$(echo "$_AX_TEXT" | head -1)
+fi
 [ -n "$_AX_LINE1" ] && echo -e "  ${_AX_LINE1}"
 exit 0
