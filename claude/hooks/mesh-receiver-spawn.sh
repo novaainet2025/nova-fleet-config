@@ -8,6 +8,13 @@
 
 set -u
 
+# PATH 자가복구 — nova-use(Electron)가 띄운 세션은 /usr/bin·/bin·node가 PATH에 없어
+# ps/grep/cat/env/bash가 exit 127로 죽는다. (2026-07-31 T1 확인)
+case ":$PATH:" in
+    *:/usr/bin:*) ;;
+    *) export PATH="$HOME/.nvm/versions/node/v22.22.3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH" ;;
+esac
+
 mkdir -p /tmp/nco-names
 
 # 1) 내 ancestor 중 claude/node 프로세스 pid 찾기
