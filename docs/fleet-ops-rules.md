@@ -4,7 +4,7 @@
 > 요약본은 Obsidian `00-SYSTEM/MASTER-CONTEXT.md`(전 세션 자동 주입)에 있음.
 
 ## ① 프로세스 위생
-- 상주 서비스(nco-backend, nova-ax, mlx-server, bridge, dashboard)는 **PM2 단일 감독** 하에서만 실행한다.
+- 상주 서비스(nco-backend, nova-ax, bridge, dashboard)는 **PM2 단일 감독** 하에서만 실행한다.
 - TS 서비스는 `npm run build` 후 **dist 실행** (tsx+cluster 조합 금지 — ERR_MODULE_NOT_FOUND 크래시 루프).
 - `nohup`/`&` 고아 spawn 금지. 고아가 포트를 선점하면 PM2가 EADDRINUSE 무한 재시작에 빠진다 (실측: 252회).
 - 점검: `pm2 list`의 PID = `lsof -i :PORT`의 PID 일치 확인.
@@ -13,7 +13,7 @@
 - **헬스체크 URL = 실추론 URL**. 다르면 "online인데 전부 타임아웃" 착시 발생 (실측: ollama successRate 0%).
 - endpoint는 머신별로: Mac은 `127.0.0.1:11434`, WSL은 Windows 게이트웨이. env 우선 구조 유지.
 - 쿼터/자격증명 상태를 안다: cursor-agent(월한도), openrouter(무료 일일한도), copilot(월한도), agy(OAuth 만료 시 재로그인).
-- 로컬 2축(ollama, mlx)은 항상 웜 상태로 유지 — 쿼터 0 예비군.
+- 로컬 추론·검증은 ollama 단일 경로를 웜 상태로 유지 — 쿼터 0 예비군.
 
 ## ③ 통신 프로토콜
 - **기계 요청(fleet-status-request 등)에 LLM이 응답하지 않는다** — autoresponder에 코드 즉답 핸들러를 둔다

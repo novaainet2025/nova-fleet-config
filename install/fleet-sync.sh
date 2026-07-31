@@ -212,7 +212,6 @@ declare -A PROVIDERS=(
   ["cursor-agent"]="curl -fsSL https://cursor.com/install | bash"
   ["hermes"]="pipx install hermes-agent"
   ["openclaw"]="npm install -g openclaw"
-  ["higgsfield"]="npm install -g @higgsfield/cli@latest"
   ["node"]="__SKIP__"  # nvm으로 관리
   ["pm2"]="npm install -g pm2"
   ["bun"]="curl -fsSL https://bun.sh/install | bash"

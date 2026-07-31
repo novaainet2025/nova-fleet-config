@@ -27,7 +27,6 @@ description: >
 | **.hwp 임베드 이미지 교체** | **hwplib(BinData)** | `hwp_replace_images` |
 | .hwp/.hwpx→Markdown(표) | unhwp | `hwp_to_markdown` |
 | 새 HWPX 생성(프리셋·표·이미지) | pyhwpxlib | `hwp_build_hwpx` |
-| 이미지 생성 | Higgsfield | `/higgsfield` |
 | 이미지 치수/형식 맞춤(슬롯) | Pillow | `hwp_fit_image` |
 | 편집 검증 | olefile+hwp-extract+unhwp | `hwp_verify_edit` |
 | 설치/가용 라이브러리 점검 | (전체) | `hwp_inventory` |
@@ -43,7 +42,7 @@ description: >
 ① 이해   hwp_extract_text + hwp_extract_images + hwp_render + hwp_dump_paragraphs
 ② 계획   덤프(SxPy)로 문단별/용어별 치환 맵 작성 (longest-first), 이미지 슬롯 파악
 ③ 편집-텍스트  hwp_edit_text(path,out,pairs)  # .hwp→COM 자동라우팅
-④ 편집-이미지  /higgsfield 생성 → Pillow로 슬롯 원본 치수·형식 맞춤 → hwp_replace_images
+④ 편집-이미지  준비된 교체 이미지 → Pillow로 슬롯 원본 치수·형식 맞춤 → hwp_replace_images
 ⑤ 검증   hwp_verify_edit(absent_terms,present_terms,expect_images) + hwp_render 비교
          + 한글 재열기(지상진실, jkf87 `hwp` MCP hwp_open+find_text)
 ```
@@ -67,6 +66,6 @@ description: >
 ## 의존
 - JDK17(`java`) + `java_bridge/lib/hwplib-1.1.9.jar` (hwplib)
 - `.venv-hwp`(unhwp·hwp-extract·olefile·Pillow), `~/.local/bin`(hwp5txt·rhwp)
-- Windows python+win32com(COM 편집), Higgsfield CLI(이미지)
+- Windows python+win32com(COM 편집)
 
 관련 메모리: [[project_hwplib_linux_hwp_edit]] · [[project_hwp_save_gotcha]] · [[project_hwp_unified_mcp]]

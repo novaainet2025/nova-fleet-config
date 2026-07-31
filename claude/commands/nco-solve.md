@@ -11,8 +11,8 @@
 ## 시작 전: 세션 초기화 및 모니터 시작
 
 # ```bash
-bash ~/projects/nco-session-log.sh "nco-solve" "0" "세션시작" "start" "$ARGUMENTS"
-echo "[진행 모니터] 새 터미널에서: python3 ~/projects/nco-progress.py"
+bash ~/projects/scripts/nco-session-log.sh "nco-solve" "0" "세션시작" "start" "$ARGUMENTS"
+echo "[진행 모니터] 새 터미널에서: python3 ~/projects/scripts/nco-progress.py"
 ```
 
 ---
@@ -20,7 +20,7 @@ echo "[진행 모니터] 새 터미널에서: python3 ~/projects/nco-progress.py
 ## PHASE 0: 요청 이해 및 계획 수립
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-solve" "P0" "요청분석" "start" "$ARGUMENTS"
+bash ~/projects/scripts/nco-session-log.sh "nco-solve" "P0" "요청분석" "start" "$ARGUMENTS"
 ```
 
 $ARGUMENTS를 분석하여:
@@ -36,7 +36,7 @@ cat package.json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdi
 cat requirements.txt 2>/dev/null | head -10
 git log --oneline -5 2>/dev/null
 
-bash ~/projects/nco-session-log.sh "nco-solve" "P0" "요청분석" "done" "프로젝트 컨텍스트 파악 완료"
+bash ~/projects/scripts/nco-session-log.sh "nco-solve" "P0" "요청분석" "done" "프로젝트 컨텍스트 파악 완료"
 ```
 
 출력:
@@ -54,7 +54,7 @@ bash ~/projects/nco-session-log.sh "nco-solve" "P0" "요청분석" "done" "프�
 ## PHASE 1: 최신 자료 웹 검색
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-solve" "P1" "웹검색" "start" "최신 라이브러리/패턴 검색 중"
+bash ~/projects/scripts/nco-session-log.sh "nco-solve" "P1" "웹검색" "start" "최신 라이브러리/패턴 검색 중"
 ```
 
 신기술/최신 라이브러리가 필요한 경우 WebSearch 도구로 검색한다.
@@ -71,7 +71,7 @@ bash ~/projects/nco-session-log.sh "nco-solve" "P1" "웹검색" "start" "최신 
 - 보안 취약점 없는 버전
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-solve" "P1" "웹검색" "done" "필요 라이브러리: <목록>"
+bash ~/projects/scripts/nco-session-log.sh "nco-solve" "P1" "웹검색" "done" "필요 라이브러리: <목록>"
 ```
 
 ---
@@ -79,7 +79,7 @@ bash ~/projects/nco-session-log.sh "nco-solve" "P1" "웹검색" "done" "필요 �
 ## PHASE 2: 아키텍처 설계
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-solve" "P2" "설계" "start" "opencode+agy 병렬 설계"
+bash ~/projects/scripts/nco-session-log.sh "nco-solve" "P2" "설계" "start" "opencode+agy 병렬 설계"
 
 curl -s -X POST http://localhost:6200/api/realtime/parallel \
   -H "Content-Type: application/json" \
@@ -88,7 +88,7 @@ curl -s -X POST http://localhost:6200/api/realtime/parallel \
     \"providers\": [\"opencode\", \"agy\"]
   }" | python3 -m json.tool
 
-bash ~/projects/nco-session-log.sh "nco-solve" "P2" "설계" "done" "설계안 생성 완료"
+bash ~/projects/scripts/nco-session-log.sh "nco-solve" "P2" "설계" "done" "설계안 생성 완료"
 ```
 
 설계 결정을 정리하고 사용자에게 확인 받는다:
@@ -106,7 +106,7 @@ bash ~/projects/nco-session-log.sh "nco-solve" "P2" "설계" "done" "설계안 �
 ## PHASE 3: 의존성 설치
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-solve" "P3" "의존성설치" "start" "라이브러리 설치 중"
+bash ~/projects/scripts/nco-session-log.sh "nco-solve" "P3" "의존성설치" "start" "라이브러리 설치 중"
 ```
 
 설치 전 확인:
@@ -122,7 +122,7 @@ bash ~/projects/nco-session-log.sh "nco-solve" "P3" "의존성설치" "start" "�
 # 설치 검증
 npm list <library> 2>/dev/null || pip show <library> 2>/dev/null
 
-bash ~/projects/nco-session-log.sh "nco-solve" "P3" "의존성설치" "done" "라이브러리 설치 완료"
+bash ~/projects/scripts/nco-session-log.sh "nco-solve" "P3" "의존성설치" "done" "라이브러리 설치 완료"
 ```
 
 ---
@@ -130,7 +130,7 @@ bash ~/projects/nco-session-log.sh "nco-solve" "P3" "의존성설치" "done" "�
 ## PHASE 4: 병렬 구현
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-solve" "P4" "구현" "start" "codex+cursor-agent 병렬 구현 시작"
+bash ~/projects/scripts/nco-session-log.sh "nco-solve" "P4" "구현" "start" "codex+cursor-agent 병렬 구현 시작"
 
 curl -s -X POST http://localhost:6200/api/realtime/parallel \
   -H "Content-Type: application/json" \
@@ -148,7 +148,7 @@ for t in d.get('tasks',[])[:3]:
     print(f'  {t[\"assigned_to\"]:14} [{t[\"status\"]:8}] {t[\"prompt\"][:50]}')
 "
 
-bash ~/projects/nco-session-log.sh "nco-solve" "P4" "구현" "done" "구현 태스크 큐 등록 완료"
+bash ~/projects/scripts/nco-session-log.sh "nco-solve" "P4" "구현" "done" "구현 태스크 큐 등록 완료"
 ```
 
 ---
@@ -156,7 +156,7 @@ bash ~/projects/nco-session-log.sh "nco-solve" "P4" "구현" "done" "구현 태�
 ## PHASE 5: 코드 리뷰
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-solve" "P5" "코드리뷰" "start" "cursor-agent 리뷰 요청"
+bash ~/projects/scripts/nco-session-log.sh "nco-solve" "P5" "코드리뷰" "start" "cursor-agent 리뷰 요청"
 
 curl -s -X POST http://localhost:6200/api/task \
   -H "Content-Type: application/json" \
@@ -167,7 +167,7 @@ curl -s -X POST http://localhost:6200/api/task \
     \"mode\": \"task\"
   }" | python3 -m json.tool
 
-bash ~/projects/nco-session-log.sh "nco-solve" "P5" "코드리뷰" "done" "리뷰 태스크 큐 등록 완료"
+bash ~/projects/scripts/nco-session-log.sh "nco-solve" "P5" "코드리뷰" "done" "리뷰 태스크 큐 등록 완료"
 ```
 
 리뷰 결과의 Critical/High 이슈를 즉시 수정한다.
@@ -177,7 +177,7 @@ bash ~/projects/nco-session-log.sh "nco-solve" "P5" "코드리뷰" "done" "리�
 ## PHASE 6: 테스트 및 엣지케이스 검증
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-solve" "P6" "테스트" "start" "테스트 실행 + vllm 엣지케이스 검증"
+bash ~/projects/scripts/nco-session-log.sh "nco-solve" "P6" "테스트" "start" "테스트 실행 + vllm 엣지케이스 검증"
 
 # 기존 테스트 실행
 npm test 2>/dev/null && echo "✔ npm test 통과" || \
@@ -188,17 +188,21 @@ echo "테스트 명령어를 직접 지정해주세요"
 # 타입 검사
 npx tsc --noEmit 2>/dev/null && echo "✔ TypeScript 오류 없음" || echo "✘ TypeScript 오류 있음"
 
-# vllm 엣지케이스 검증
+# 엣지케이스 검증
+# 2026-07-29 수정: ai 를 "vllm" 으로 보내고 있었으나 vllm 은 NCO 에 등록된 적이 없다
+# (GET /api/ai-providers = claude-code, opencode, codex, cursor-agent, ollama, agy,
+#  hermes 7개). 존재하지 않는 프로바이더로 보내면 그 태스크는 배정되지
+# 않는다. 검증/QA 담당인 ollama 로 보낸다.
 curl -s -X POST http://localhost:6200/api/task \
   -H "Content-Type: application/json" \
   -d "{
     \"callerSessionId\": \"$NCO_SESSION_ID\", \"callerAgentId\": \"$NCO_NAME\",
-    \"ai\": \"vllm\",
+    \"ai\": \"ollama\",
     \"prompt\": \"다음 구현의 엣지케이스를 찾아라: 빈 입력, 최대값, 동시성, 네트워크 오류, 인증 실패 시나리오. 요청: $ARGUMENTS\",
     \"mode\": \"task\"
   }" | python3 -m json.tool
 
-bash ~/projects/nco-session-log.sh "nco-solve" "P6" "테스트" "done" "테스트 실행 완료"
+bash ~/projects/scripts/nco-session-log.sh "nco-solve" "P6" "테스트" "done" "테스트 실행 완료"
 ```
 
 ---
@@ -206,7 +210,7 @@ bash ~/projects/nco-session-log.sh "nco-solve" "P6" "테스트" "done" "테스�
 ## PHASE 7: Gap 분석 (100% 임계값)
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-solve" "P7" "Gap분석" "gap" "완성도 평가 중"
+bash ~/projects/scripts/nco-session-log.sh "nco-solve" "P7" "Gap분석" "gap" "완성도 평가 중"
 ```
 
 6개 기준으로 평가한다:
@@ -220,7 +224,7 @@ bash ~/projects/nco-session-log.sh "nco-solve" "P7" "Gap분석" "gap" "완성도
 
 ```bash
 # Gap Rate 기록
-bash ~/projects/nco-session-log.sh "nco-solve" "P7" "Gap분석" "done" "Gap Rate: XX% (기능:XX 품질:XX 테스트:XX 보안:XX)"
+bash ~/projects/scripts/nco-session-log.sh "nco-solve" "P7" "Gap분석" "done" "Gap Rate: XX% (기능:XX 품질:XX 테스트:XX 보안:XX)"
 ```
 
 출력:
@@ -244,9 +248,9 @@ Gap Rate: XX%
 
 ```bash
 # 루프 시
-bash ~/projects/nco-session-log.sh "nco-solve" "P8" "루프판단" "loop" "Gap XX% — PHASE X부터 재실행 (N/3회)"
+bash ~/projects/scripts/nco-session-log.sh "nco-solve" "P8" "루프판단" "loop" "Gap XX% — PHASE X부터 재실행 (N/3회)"
 # 완료 시
-bash ~/projects/nco-session-log.sh "nco-solve" "P8" "루프판단" "done" "Gap XX% — 100% 달성"
+bash ~/projects/scripts/nco-session-log.sh "nco-solve" "P8" "루프판단" "done" "Gap XX% — 100% 달성"
 ```
 
 - **Gap Rate ≥ 100%** → PHASE 9 완료 보고서 출력
@@ -261,7 +265,7 @@ bash ~/projects/nco-session-log.sh "nco-solve" "P8" "루프판단" "done" "Gap X
 ## PHASE 9: 완료 보고서 저장
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-solve" "P9" "완료보고" "start" "보고서 저장 중"
+bash ~/projects/scripts/nco-session-log.sh "nco-solve" "P9" "완료보고" "start" "보고서 저장 중"
 
 mkdir -p docs/solutions
 FILENAME="docs/solutions/$(date '+%Y%m%d-%H%M%S')-solve.md"
@@ -293,10 +297,10 @@ REPORT
 
 echo "보고서 저장: $FILENAME"
 
-bash ~/projects/nco-session-log.sh "nco-solve" "P9" "완료보고" "done" "$FILENAME"
+bash ~/projects/scripts/nco-session-log.sh "nco-solve" "P9" "완료보고" "done" "$FILENAME"
 ```
 
 진행 모니터 최종 확인:
 ```bash
-python3 ~/projects/nco-progress.py --once
+python3 ~/projects/scripts/nco-progress.py --once
 ```

@@ -70,11 +70,15 @@ fi
 fi  # end 단일 소스 라우팅 else (레거시 fallback)
 MY_NAME="${NCO_NAME:-cli}"
 
-# NCO health check (2s max)
-NCO_HEALTH=$(curl -s --connect-timeout 1 --max-time 2 http://localhost:6200/health 2>/dev/null)
+# NCO health check — 127.0.0.1 강제(localhost IPv6 ::1 우회 제거, NCO는 IPv4 전용 리슨),
+# --noproxy(환경 프록시 우회), 완화 타임아웃 + 1회 재시도로 이벤트루프 순간부하/BOOTSTRAP 훅스택
+# 굶김에 의한 거짓 offline 방지. (2026-07-20 claude-3: 간헐 false-offline 하드닝)
+_nco_health() { curl -s --noproxy '*' --connect-timeout 2 --max-time 4 http://127.0.0.1:6200/health 2>/dev/null; }
+NCO_HEALTH=$(_nco_health)
+[ -z "$NCO_HEALTH" ] && { sleep 0.3; NCO_HEALTH=$(_nco_health); }
 
 if [ -n "$NCO_HEALTH" ]; then
-    PROVIDER_COUNT=$(curl -s --connect-timeout 1 --max-time 2 http://localhost:6200/api/ai-providers 2>/dev/null | grep -o '"id"' | wc -l 2>/dev/null || echo "?")
+    PROVIDER_COUNT=$(curl -s --noproxy '*' --connect-timeout 2 --max-time 4 http://127.0.0.1:6200/api/ai-providers 2>/dev/null | grep -o '"id"' | wc -l 2>/dev/null || echo "?")
 
     # Session state
     NCO_SESSION_DIR="/tmp/nco-sessions"
@@ -86,12 +90,12 @@ if [ -n "$NCO_HEALTH" ]; then
     FILES_JSON=$(echo "$CHANGED_LIST" | python3 -c "import sys; f=sys.stdin.read().strip(); print('['+','.join(['\"'+x+'\"' for x in f.split(',') if x])+']')" 2>/dev/null || echo "[]")
     PROMPT_PREVIEW=$(echo "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('userMessage','')[:80])" 2>/dev/null || echo "")
 
-    MESH_HB=$(curl -s --connect-timeout 1 --max-time 2 -X POST http://localhost:6200/api/mesh/heartbeat \
+    MESH_HB=$(curl -s --noproxy '*' --connect-timeout 2 --max-time 4 -X POST http://127.0.0.1:6200/api/mesh/heartbeat \
       -H "Content-Type: application/json" \
       -d "{\"sessionId\":\"$NCO_SESSION_ID\",\"agentId\":\"$MY_NAME\",\"pid\":$NCO_SESSION_ID,\"status\":\"coding\",\"currentWork\":\"$(echo "$PROMPT_PREVIEW" | sed 's/"/\\"/g' | sed "s/'/\\\\'/g")\",\"currentFiles\":$FILES_JSON,\"branch\":\"$BRANCH\"}" 2>/dev/null)
 
     # cli_sessions 레지스트리 heartbeat (2026-07-12 claude-2): 대시보드 세션 관측 배선(fire-and-forget)
-    curl -s --connect-timeout 1 --max-time 2 -X POST http://localhost:6200/api/cli-session \
+    curl -s --noproxy '*' --connect-timeout 2 --max-time 4 -X POST http://127.0.0.1:6200/api/cli-session \
       -H "Content-Type: application/json" \
       -d "{\"id\":\"$NCO_SESSION_ID\",\"hostname\":\"$(hostname 2>/dev/null || echo unknown)\",\"pid\":\"$NCO_SESSION_ID\",\"projectDir\":\"$PROJECT_DIR\",\"cliVersion\":\"$MY_NAME\",\"status\":\"busy\",\"currentTask\":\"$(echo "$PROMPT_PREVIEW" | sed 's/"/\\"/g' | sed "s/'/\\\\'/g")\"}" >/dev/null 2>&1 || true
 
@@ -129,7 +133,7 @@ else:
     TOTAL_CHANGED=$(echo "$TOTAL_CHANGED" | tr -d ' ')
 
     # ─── 에이전트 가용 상태 수집 ──────────────────
-    AGENT_STATUS=$(curl -s --connect-timeout 1 --max-time 2 http://localhost:6200/api/daemons 2>/dev/null | python3 -c "
+    AGENT_STATUS=$(curl -s --noproxy '*' --connect-timeout 2 --max-time 4 http://127.0.0.1:6200/api/daemons 2>/dev/null | python3 -c "
 import sys,json
 try:
     d=json.load(sys.stdin)
@@ -216,11 +220,14 @@ except: print('0 -1 -1')
     BOOTSTRAP_FLAG="/tmp/nco-bootstrap-${NCO_SESSION_ID}"
     if [ -f "$BOOTSTRAP_FLAG" ]; then
         _BS_NEED=""
-        # inter-session 이름 = <디바이스기기명>-<claude-N> (mesh/NCO 이름 NCO_NAME은 claude-N 그대로 유지)
-        # hostname 소문자화 + 비-[a-z0-9] → '-' + .local 제거 + 40자 cap(device쪽만 자르고 claude-N 보존)
+        # inter-session 이름 = <디바이스기기명>-<claude-N> (Claude Code 세션)
+        # 2026-07-17 정정(사용자 지시): nova-N 라벨은 nova-cli 세션 전용(nova-cli의 toInterSessionLabel이 자체 처리).
+        # 순수 Claude Code 세션은 claude-N 라벨 유지 — 07-13 규칙이 전 세션에 과잉 일반화됐던 것을 스코프 한정.
+        # hostname 소문자화 + 비-[a-z0-9] → '-' + .local 제거 + 40자 cap(device쪽만 자르고 라벨 보존)
+        _ISLABEL="${MY_NAME}"
         _ISDEV=$(hostname 2>/dev/null | tr '[:upper:]' '[:lower:]' | sed -E 's/\.local$//; s/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
         [ -z "$_ISDEV" ] && _ISDEV="dev"
-        _ISSUF="-${MY_NAME}"; _ISDEV="${_ISDEV:0:$((40-${#_ISSUF}))}"; _ISDEV="${_ISDEV%-}"
+        _ISSUF="-${_ISLABEL}"; _ISDEV="${_ISDEV:0:$((40-${#_ISSUF}))}"; _ISDEV="${_ISDEV%-}"
         _ISNAME="${_ISDEV}${_ISSUF}"
         pgrep -f "client.py.*--name ${_ISNAME}" >/dev/null 2>&1 || _BS_NEED="${_BS_NEED}inter-session "
         [ -f "/tmp/nco-inbox-${NCO_SESSION_ID}/monitor.lock" ] || _BS_NEED="${_BS_NEED}mesh-receiver"

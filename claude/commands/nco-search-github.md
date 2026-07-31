@@ -11,9 +11,11 @@
 _ARGS="$ARGUMENTS"
 
 # Parse --type flag
-_TYPE=$(echo "$_ARGS" | grep -oE '\-\-type\s+\w+' | awk '{print $2}')
+_TYPE=$(echo "$_ARGS" | grep -oE -- '--type[[:space:]]+[[:alnum:]_]+' | awk '{print $2}')
 _TYPE="${_TYPE:-repo}"
-_QUERY=$(echo "$_ARGS" | sed -E 's/--type\s+\w+\s*//' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+# \s, \w 는 GNU sed 확장이라 macOS(BSD sed)에서는 치환이 아예 일어나지 않아
+# "--type issue" 문자열이 검색 쿼리에 그대로 섞여 들어갔다 → POSIX 문자클래스 사용
+_QUERY=$(echo "$_ARGS" | sed -E 's/--type[[:space:]]+[[:alnum:]_]+[[:space:]]*//' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
 
 if [ -z "$_QUERY" ]; then
   echo "오류: 검색어를 입력하세요."

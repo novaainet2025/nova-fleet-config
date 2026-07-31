@@ -10,15 +10,15 @@
 ARG="${ARGUMENTS:-}"
 
 if [ "$ARG" = "once" ]; then
-  python3 ~/projects/nco-progress.py --once
+  python3 ~/projects/scripts/nco-progress.py --once
 
 elif [ "$ARG" = "cmd" ]; then
-  python3 ~/projects/nco-progress.py --once --cmd
+  python3 ~/projects/scripts/nco-progress.py --once --cmd
 
 elif echo "$ARG" | grep -qE '^[0-9]+$'; then
-  python3 ~/projects/nco-progress.py --interval "$ARG"
+  python3 ~/projects/scripts/nco-progress.py --interval "$ARG"
 
 else
-  python3 ~/projects/nco-progress.py --once
+  python3 ~/projects/scripts/nco-progress.py --once
 fi
 ```

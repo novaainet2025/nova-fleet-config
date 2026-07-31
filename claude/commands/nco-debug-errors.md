@@ -8,9 +8,10 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 
 DEBUG=$(curl -s "${PROXY_URL}/debug/status" 2>/dev/null)
 if [ -z "$DEBUG" ]; then
-  echo "  ✗ 프록시에 연결할 수 없습니다 (${PROXY_URL})"
-  echo "    프록시(security-kb/anthropic-ollama-proxy.py)를 먼저 시작하세요."
-  exit 1
+  echo "  ⚠ 프록시가 실행 중이 아닙니다 (${PROXY_URL})"
+  echo "    최근 에러 데이터 없음 — 필요할 때 security-kb/anthropic-ollama-proxy.py를 시작하세요."
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  exit 0
 fi
 
 echo "$DEBUG" | python3 -c "

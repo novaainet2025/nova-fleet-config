@@ -12,7 +12,9 @@ if [ -z "$PLAN_ID" ]; then
   echo "사용법: /nco-do <planId> [sequential|parallel|auto]"
   echo ""
   echo "현재 플랜 목록:"
-  curl -s http://localhost:6200/api/kanban 2>/dev/null | python3 -c "
+  # /api/kanban 은 {planId, columns:{todo,...}} 를 돌려주므로 plans/data 키가 없어
+  # 항상 "플랜 없음"으로 잘못 표시됐다. 플랜 목록은 /api/plans 가 담당한다.
+  curl -s "http://localhost:6200/api/plans?limit=10" 2>/dev/null | python3 -c "
 import sys,json
 try:
   d=json.load(sys.stdin)

@@ -177,7 +177,7 @@ if [ -f ".llm/todo.md" ]; then
 fi
 
 # ========================================
-# NCO + MLX status
+# NCO status
 # ========================================
 NCO_HEALTH=$(curl -s --connect-timeout 1 --max-time 2 http://localhost:6200/health 2>/dev/null)
 if [ -n "$NCO_HEALTH" ]; then
@@ -186,13 +186,6 @@ if [ -n "$NCO_HEALTH" ]; then
 else
     echo "" >&2
     echo -e "${YELLOW}NCO Engine: Offline${NC}" >&2
-fi
-
-MLX_HEALTH=$(curl -s --connect-timeout 1 --max-time 2 http://localhost:8000/health 2>/dev/null)
-if [ -n "$MLX_HEALTH" ]; then
-    echo -e "${GREEN}MLX: Online${NC}" >&2
-else
-    echo -e "${YELLOW}MLX: Offline${NC}" >&2
 fi
 
 # ========================================

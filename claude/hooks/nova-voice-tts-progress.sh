@@ -141,7 +141,7 @@ if tool == 'Bash':
 
     if is_err:
         first = cmd.split('\n')[0].strip()[:35]
-        clean = re.sub(r'[|<>&${}\\\'"#]','',first).strip()
+        clean = re.sub(r'[|<>&${}\\\x27\x22#]','',first).strip()
         msg = f'{proj_s}{clean[:25]} 실행 중 오류가 발생했습니다' if len(clean)>3 else f'{proj_s}명령 실행 중 오류가 발생했습니다'
 
     elif re.search(r'npm run build|bun run build|yarn build|electron-vite build', cl):
@@ -166,7 +166,7 @@ if tool == 'Bash':
         msg = f'{proj_s}개발 서버가 시작됐습니다'
 
     elif re.search(r'git commit', cl):
-        m2 = re.search(r'-m\s*["\']([^"\']{3,50})', cmd)
+        m2 = re.search(r'-m\s*[\x22\x27]([^\x22\x27]{3,50})', cmd)
         if m2:
             msg = f'{proj_s}커밋 완료: {m2.group(1)[:35]}'
         else:
@@ -192,8 +192,8 @@ if tool == 'Bash':
         elif p: msg = f'{proj_s}테스트 완료: {p.group(1)}개 통과'
         else: msg = f'{proj_s}테스트가 완료됐습니다'
 
-    elif re.search(r'cat\s*>', cmd) or re.search(r'<<\s*[\'"]?\w{2,}', cmd):
-        m2 = re.search(r'cat\s*[>]+\s*["\']?([\S]+)', cmd)
+    elif re.search(r'cat\s*>', cmd) or re.search(r'<<\s*[\x27\x22]?\w{2,}', cmd):
+        m2 = re.search(r'cat\s*[>]+\s*[\x22\x27]?([\S]+)', cmd)
         if m2:
             p2 = project_name(m2.group(1))
             a = src_area(m2.group(1))
@@ -226,7 +226,7 @@ if tool == 'Bash':
             msg = ko_line
         else:
             first = cmd.split('\n')[0].split('&&')[0].strip()
-            clean = re.sub(r'[|<>&${}\\\'"#]','',first).strip()
+            clean = re.sub(r'[|<>&${}\\\x27\x22#]','',first).strip()
             if 4 <= len(clean) <= 25 and not re.search(r'[./\-]{2,}', clean):
                 msg = f'{proj_s}{clean} 실행이 완료됐습니다'
             else:

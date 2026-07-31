@@ -8,5 +8,7 @@ curl -s http://localhost:6200/api/safety/backups | python3 -m json.tool
 if [ -n "$ARGUMENTS" ]; then
   echo ""
   echo "=== Validation Gates: $ARGUMENTS ==="
-  curl -s "http://localhost:6200/api/safety/gates?taskId=$ARGUMENTS" | python3 -m json.tool
+  # /api/safety/gates 는 서버에 존재하지 않는 라우트였다(항상 404).
+  # 실제 구현된 경로는 /api/safety/verifications/:taskId 이다.
+  curl -s "http://localhost:6200/api/safety/verifications/$ARGUMENTS" | python3 -m json.tool
 fi

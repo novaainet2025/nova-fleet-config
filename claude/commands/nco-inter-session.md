@@ -28,7 +28,6 @@
 #   opencode     → "architect"     (CTO / 설계)
 #   codex        → "engineer-1"    (구현 담당)
 #   cursor-agent → "reviewer"      (코드 리뷰)
-#   mlx          → "local-llm"     (로컬 추론)
 #   nova-ax 일반 작업 세션 → "nova-project", "nova-ax", "speaker-mobile" 등
 
 # ── nco-mesh vs inter-session 차이 ──

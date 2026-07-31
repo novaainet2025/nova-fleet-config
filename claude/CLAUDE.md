@@ -61,7 +61,6 @@
 | 리뷰 | nco_task | cursor-agent |
 | 검증/테스트 | nco_task | ollama |
 | 리서치 | nco_task | copilot |
-| 이미지/영상 | nco_task | higgsfield |
 | 전략/대형 | /nco-opus | 7-Phase |
 
 ## codex + agy 필수 협업 (소프트 강제)
@@ -80,7 +79,7 @@ nco_task({ai,prompt}) · nco_parallel({prompt,providers}) · nco_conductor({prom
 | codex | 구현·버그·다중파일 | | hermes | 툴사용·함수호출(무료) |
 | cursor-agent | 리뷰·보안 | | ollama | 로컬 검증·QA |
 | agy | UI·패턴·설계 | | hermes | 툴사용·함수호출(무료) |
-| copilot | 리서치·문서 | | higgsfield | 이미지·영상 |
+| copilot | 리서치·문서 | | | |
 
 ---
 

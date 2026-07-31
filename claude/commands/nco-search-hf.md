@@ -20,8 +20,13 @@ QUERY=""
 
 # Extract --type if present
 if echo "$ARGS" | grep -q -- '--type'; then
-  SEARCH_TYPE=$(echo "$ARGS" | sed -n 's/.*--type[= ]\?\([a-z]*\).*/\1/p')
-  QUERY=$(echo "$ARGS" | sed 's/--type[= ]\?[a-z]*//' | xargs)
+  # BRE 의 \? 는 GNU 확장이라 BSD sed 에서 캡처가 실패해 SEARCH_TYPE 이 빈 값이 되고
+  # 아래 case 문의 *) 분기로 빠져 --type 사용 시 항상 exit 1 했다.
+  # ERE(-E)의 ? 는 POSIX 표준이라 GNU/BSD 양쪽에서 동작한다.
+  SEARCH_TYPE=$(echo "$ARGS" | sed -nE 's/.*--type[= ]?([a-z]+).*/\1/p')
+  QUERY=$(echo "$ARGS" | sed -E 's/--type[= ]?[a-z]+//' | xargs)
+  # 캡처 실패 시에도 기본값으로 되돌린다 (빈 값이 case 문을 깨뜨리지 않도록)
+  [ -z "$SEARCH_TYPE" ] && SEARCH_TYPE="model"
 else
   QUERY=$(echo "$ARGS" | xargs)
 fi
@@ -87,13 +92,16 @@ case "$SEARCH_TYPE" in
 esac
 
 # Set auth header if HF_TOKEN is available
-AUTH_HEADER=""
-if [ -n "$HF_TOKEN" ]; then
-  AUTH_HEADER="-H \"Authorization: Bearer $HF_TOKEN\""
+# 문자열에 따옴표를 넣어두고 unquoted 확장하면 셸이 따옴표를 재해석하지 않아
+# -H / "Authorization: / Bearer / <token>" 4개 인자로 쪼개져 인증이 깨진다.
+# 배열로 담아 "${AUTH_ARGS[@]}" 로 넘겨야 한 인자로 유지된다.
+AUTH_ARGS=()
+if [ -n "${HF_TOKEN:-}" ]; then
+  AUTH_ARGS=(-H "Authorization: Bearer $HF_TOKEN")
 fi
 
 echo "[API] $API_URL"
-RESPONSE=$(curl -s -f --max-time 15 $AUTH_HEADER "$API_URL" 2>&1)
+RESPONSE=$(curl -s -f --max-time 15 "${AUTH_ARGS[@]}" "$API_URL" 2>&1)
 CURL_EXIT=$?
 
 if [ $CURL_EXIT -ne 0 ]; then

@@ -10,9 +10,18 @@
 
 _ARGS="$ARGUMENTS"
 MODE=$(printf '%s' "$_ARGS" | cut -d' ' -f1)
+if [ -z "$MODE" ]; then
+  echo "사용법: /nco-team <프롬프트> | parallel <프롬프트> | consensus <프롬프트>"
+  exit 1
+fi
+
 case "$MODE" in
   parallel)
     PROMPT=$(printf '%s' "$_ARGS" | cut -d' ' -f2-)
+    if [ -z "$PROMPT" ]; then
+      echo "사용법: /nco-team parallel <프롬프트>"
+      exit 1
+    fi
     jq -n --arg prompt "$PROMPT" '{"prompt":$prompt}' \
       | curl -s -X POST http://localhost:6200/api/parallel \
           -H "Content-Type: application/json" \
@@ -21,6 +30,10 @@ case "$MODE" in
     ;;
   consensus)
     PROMPT=$(printf '%s' "$_ARGS" | cut -d' ' -f2-)
+    if [ -z "$PROMPT" ]; then
+      echo "사용법: /nco-team consensus <프롬프트>"
+      exit 1
+    fi
     jq -n --arg prompt "$PROMPT" '{"prompt":$prompt}' \
       | curl -s -X POST http://localhost:6200/api/consensus \
           -H "Content-Type: application/json" \

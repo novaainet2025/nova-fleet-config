@@ -552,14 +552,6 @@ fi
 # [7] OpenClaw (브라우저 자동화 에이전트)
 install_provider "openclaw" "npm install -g openclaw"
 
-# [8] Higgsfield CLI (이미지·영상 생성)
-if command -v higgsfield &>/dev/null; then
-  ok "higgsfield 이미 설치됨"
-else
-  info "Higgsfield CLI 설치 중..."
-  npm install -g @higgsfield/cli@latest 2>/dev/null && ok "higgsfield 설치 완료" \
-    || warn "higgsfield 설치 실패 (수동: npm install -g @higgsfield/cli@latest)"
-fi
 
 # [9] gbrain (bun 필요 — 지식그래프 MCP)
 if command -v gbrain &>/dev/null || [[ -x "$HOME/.bun/bin/gbrain" ]]; then
@@ -607,32 +599,52 @@ else
   warn "inter-session: claude 로그인 후 자동 설치됨 (claude plugin install inter-session)"
 fi
 
-# MLX (Mac Apple Silicon 전용 — 조건 불충족 시 완전 스킵)
-# 최소 사양: Apple Silicon(arm64) + RAM 8GB+ + Disk 여유 10GB+
-# 권장 사양: RAM 16GB+ (7B 이상 모델), 32GB+ (26B 모델)
-if [[ "$OS" == "mac" && "$IS_ARM64" == "true" ]]; then
-  if _hw_check 8 10 "MLX (Apple Silicon LLM)"; then
-    python3 -c "import mlx_lm" 2>/dev/null && ok "mlx-lm 이미 설치됨" || {
-      info "mlx-lm 설치 중 (Apple Silicon)..."
-      pip3 install mlx-lm 2>/dev/null && ok "mlx-lm 설치 완료" || warn "mlx-lm 설치 실패"
-    }
-  fi
-  # 경고: RAM < 16GB이면 대형 모델 실행 불가 안내
-  _MLX_RAM=$(_ram_gb)
-  (( _MLX_RAM < 16 )) && warn "MLX 대형 모델(7B+) 실행 권장 RAM: 16GB (현재 ${_MLX_RAM}GB)" || true
-elif [[ "$OS" == "mac" && "$IS_ARM64" == "false" ]]; then
-  info "MLX: Apple Silicon(arm64) 전용 — Intel Mac 스킵"
-else
-  info "MLX: Mac arm64 전용 — 현재 환경(${OS}/${ARCH}) 스킵"
-fi
+# MLX (mlx-lm) 설치 블록 제거됨 — 2026-07-29, 지휘자(claude-5) 판정 2.
+#
+# 사유: 2026-07-21 사용자 지시로 MLX 는 NCO 에서 제거 대상이 됐고, mlx 프로바이더는
+# config/ai-providers.json 에도 런타임 /api/ai-providers 에도 등록된 적이 없다.
+# NCO 가 쓰지 않는 런타임을 Mac 부트스트랩마다 pip 설치할 이유가 없다.
+# 같은 뿌리로 install/apply.sh 의 "Mac+MLX면 ollama 비활성" 게이트와
+# 아래 Ollama 블록의 "Mac이면 스킵" 분기도 함께 제거했다.
+#
+# 주의 — 아래는 제거 대상이 아니다:
+#  - _ram_gb/_disk_free_gb/_hw_check 헬퍼: Ollama 조건 판정이 계속 사용한다.
+#  - ~/.local/bin/mlx_lm.server 바이너리, nova-voice 의 .venv-tts: 파일/라이브러리는 그대로 둔다.
+#
+# 정정(2026-07-29): 이 주석은 원래 "pm2 'mlx-server'(:8000)는 nova-voice TTS와 공유하므로
+# 보존"이라고 적혀 있었으나 사실이 아니었다. 실측 결과 :8000 은 LISTEN 0 이고 mlx 프로세스도
+# 0건이며, 그 pm2 블록의 args 모델은 gemma-4-26b(채팅 모델)로 TTS 와 무관했다.
+# TTS 훅(~/.claude/hooks/nova-voice-tts.sh)이 쓰는 포트는 7861/7860/8800/8801 이고 :8000 은 없다.
+# 따라서 해당 pm2 블록은 제거했다(복원용 원문: docs/removed-mlx-pm2-block-20260729.md).
 
-# Ollama (Linux/WSL 전용)
-# Mac은 MLX 사용 → 설치 안 함
+# Ollama — 조건이 되면 설치하고, 조건이 안 되면 설치하지 않는다 (OS 무관).
+#
+# 2026-07-29 변경: 이전에는 "Mac이면 MLX 사용"이라며 OS만 보고 무조건 스킵했다.
+# 그러나 NCO에는 mlx 프로바이더가 등록된 적이 없어(config·런타임 /api/ai-providers
+# 모두 8개, mlx 0건) 존재하지 않는 대체재를 이유로 유일한 로컬 워커를 빼는 셈이었다.
+# 같은 이유로 install/apply.sh의 "Mac+MLX면 ollama 비활성" 게이트도 함께 제거했다.
+# 이제 판정 기준은 OS가 아니라 실제 조건이다:
+#   (a) 명시적 opt-out sentinel(~/.claude/.nco-no-ollama)이 있으면 설치 안 함
+#   (b) 이미 설치돼 있으면 설치 안 함
+#   (c) 하드웨어 사양(RAM 8GB+ / Disk 여유 10GB+)을 충족하면 설치, 미달이면 안 함
+#   (d) WSL은 Windows 호스트 Ollama를 우선 탐지 → 있으면 WSL 내 설치 스킵
 # 최소 사양: RAM 8GB+ + Disk 여유 10GB+ (소형 모델 기준)
-# 권장 사양: RAM 16GB+ (7B 모델), GPU(CUDA) 있으면 성능 대폭 향상
-# WSL은 Windows 호스트 Ollama를 우선 탐지 → 있으면 WSL 내 설치 스킵
-if [[ "$OS" == "mac" ]]; then
-  info "Ollama: Mac 환경 — MLX 사용 (스킵)"
+# 권장 사양: RAM 16GB+ (7B 모델), GPU(CUDA/Apple Silicon) 있으면 성능 대폭 향상
+if [[ -f "$HOME/.claude/.nco-no-ollama" ]]; then
+  info "Ollama: opt-out sentinel(~/.claude/.nco-no-ollama) 존재 — 설치 스킵"
+elif [[ "$OS" == "mac" ]]; then
+  if command -v ollama &>/dev/null; then
+    ok "Ollama (mac) 이미 설치됨"
+  elif _hw_check 8 10 "Ollama (mac)"; then
+    if command -v brew &>/dev/null; then
+      info "Ollama 설치 중 (brew)..."
+      brew install ollama && ok "Ollama 설치 완료" || warn "Ollama 설치 실패"
+    else
+      # macOS에서 ollama.ai/install.sh는 지원 대상이 아니다. 임의 실행하지 않는다.
+      warn "Ollama 미설치 + Homebrew 없음 — 자동 설치 스킵"
+      info "  → 수동 설치: https://ollama.com/download 또는 brew 설치 후 재실행"
+    fi
+  fi
 elif [[ "$IS_WSL" == "true" ]]; then
   # WSL: Windows 호스트 Ollama 먼저 탐지 (게이트웨이 IP)
   GW=$(ip route 2>/dev/null | awk '/default/{print $3; exit}' || echo "")
@@ -689,41 +701,12 @@ if [[ -f "$ECOSYSTEM_FILE" ]] && grep -q "$HOME" "$ECOSYSTEM_FILE" 2>/dev/null &
 else
   info "ecosystem.config.cjs 생성 중 ($HOME 기준)..."
 
-  # MLX 서버 설정 (Mac arm64만)
-  MLX_SERVER_BLOCK=""
-  if [[ "$OS" == "mac" && "$IS_ARM64" == "true" ]]; then
-    MLX_BIN="$HOME/.local/bin/mlx_lm.server"
-    MLX_MODEL="$HOME/project/LM-models/mlx/gemma-4-26b-a4b-it-4bit"
-    MLX_SERVER_BLOCK=$(cat << MLXEOF
-  {
-    name: 'mlx-server',
-    interpreter: 'none',
-    script: '${MLX_BIN}',
-    args: '--model ${MLX_MODEL} --port 8000 --host 127.0.0.1',
-    cwd: '${NCO_DIR}',
-    instances: 1,
-    autorestart: true,
-    watch: false,
-    max_memory_restart: '30G',
-    restart_delay: 10000,
-    max_restarts: 20,
-    min_uptime: '30s',
-  },
-  {
-    name: 'mlx-proxy',
-    script: '${NCO_DIR}/security-kb/anthropic-ollama-proxy.py',
-    interpreter: 'python3',
-    cwd: '${NCO_DIR}',
-    instances: 1,
-    autorestart: true,
-    watch: false,
-    restart_delay: 5000,
-    max_restarts: 10,
-    min_uptime: '15s',
-  },
-MLXEOF
-)
-  fi
+  # MLX pm2 블록 제거됨 — 2026-07-29, 지휘자(claude-5) 정정 지시.
+  # pm2 이름은 'mlx-server' 였으나 args 의 모델이 채팅 모델(gemma-4-26b)이라 TTS 와 무관했고,
+  # 이어진 'mlx-proxy' 는 존재하지 않는 security-kb/anthropic-ollama-proxy.py 를 가리키는 죽은 등록이었다.
+  # 실측: :8000/:7860/:4100 LISTEN 0, mlx 프로세스 0건. TTS 훅은 7861/7860/8800/8801 만 사용.
+  # 복원용 원문: docs/removed-mlx-pm2-block-20260729.md
+  # 주의: ~/.local/bin/mlx_lm.server 바이너리와 nova-voice 의 .venv-tts 는 제거 대상이 아니다.
 
   # Nova-AX 시작 스크립트 탐지
   NOVA_AX_SCRIPT="app.js"
@@ -772,7 +755,7 @@ module.exports = {
       max_restarts: 10,
       min_uptime: '15s',
     },
-${MLX_SERVER_BLOCK}  ],
+  ],
 };
 ECOSYSEOF
 
@@ -939,7 +922,6 @@ check_cmd "AGY (Antigravity)" "agy"
 check_cmd "cursor-agent"      "cursor-agent"
 check_cmd "Hermes"            "hermes"
 check_cmd "OpenClaw"          "openclaw"
-check_cmd "Higgsfield"        "higgsfield"
 check_cmd "bun"               "bun"
 check_cmd "gbrain"            "gbrain"
 check_cmd "pipx"              "pipx"
@@ -947,15 +929,11 @@ check_cmd "python3"           "python3"
 # 로컬 AI — 사양 정보와 함께 표시
 _DR_RAM=$(_ram_gb); _DR_DISK=$(_disk_free_gb)
 echo -e "  ${CYAN}  시스템 사양: RAM ${_DR_RAM}GB / Disk여유 ${_DR_DISK}GB${NC}"
-if [[ "$OS" == "mac" && "$IS_ARM64" == "true" ]]; then
-  check_cmd "mlx-lm (Mac arm64)"  "mlx_lm.server"
-  (( _DR_RAM < 8 ))  && echo -e "  ${YELLOW}  ⚠ MLX: RAM ${_DR_RAM}GB < 최소 8GB${NC}"
-  (( _DR_RAM < 16 )) && (( _DR_RAM >= 8 )) && echo -e "  ${YELLOW}  ⚠ MLX: 대형 모델(7B+) 권장 RAM 16GB (현재 ${_DR_RAM}GB)${NC}"
-elif [[ "$OS" != "mac" ]]; then
-  check_cmd "Ollama (Linux/WSL)"  "ollama"
-  (( _DR_RAM < 8 ))  && echo -e "  ${YELLOW}  ⚠ Ollama: RAM ${_DR_RAM}GB < 최소 8GB (미설치됨)${NC}"
-  (( _DR_DISK < 10 )) && echo -e "  ${YELLOW}  ⚠ Ollama: Disk여유 ${_DR_DISK}GB < 최소 10GB${NC}"
-fi
+# MLX 진단 분기 제거(2026-07-29) — MLX 는 NCO 에서 제거 대상이라 설치하지 않는다.
+# Ollama 는 이제 OS 무관하게 조건 판정으로 설치되므로 진단도 전 플랫폼 공통이다.
+check_cmd "Ollama"              "ollama"
+(( _DR_RAM < 8 ))  && echo -e "  ${YELLOW}  ⚠ Ollama: RAM ${_DR_RAM}GB < 최소 8GB (미설치됨)${NC}" || true
+(( _DR_DISK < 10 )) && echo -e "  ${YELLOW}  ⚠ Ollama: Disk여유 ${_DR_DISK}GB < 최소 10GB${NC}" || true
 [[ "$OS" != "mac" ]] && check_cmd "Tailscale"      "tailscale"
 
 # inter-session venv 체크

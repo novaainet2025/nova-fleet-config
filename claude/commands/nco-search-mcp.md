@@ -15,8 +15,11 @@ QUERY=""
 
 # Extract --type flag
 if echo "$ARGS" | grep -q -- '--type'; then
-  SEARCH_TYPE=$(echo "$ARGS" | sed -n 's/.*--type[= ]\+\([a-z]\+\).*/\1/p')
-  ARGS=$(echo "$ARGS" | sed 's/--type[= ]\+[a-z]\+//g')
+  # BRE 의 \+ 는 GNU 확장이라 BSD sed 에서 캡처/치환이 모두 실패했다.
+  # 그 결과 --type 지정이 무시되고 항상 기본값(server)으로 강제되며,
+  # 쿼리에도 "--type tool" 문자열이 남아 검색어가 오염됐다. ERE(-E)로 교체.
+  SEARCH_TYPE=$(echo "$ARGS" | sed -nE 's/.*--type[= ]+([a-z]+).*/\1/p')
+  ARGS=$(echo "$ARGS" | sed -E 's/--type[= ]+[a-z]+//g')
 fi
 
 # Remaining args become query (trim whitespace)

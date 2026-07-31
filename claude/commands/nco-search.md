@@ -21,7 +21,8 @@ $ARGUMENTS의 첫 토큰에서 `소스:` 접두어를 감지하여 전문 검색
 _ARGS="$ARGUMENTS"
 # 소스 접두어 추출 (콜론 앞부분)
 _PREFIX=$(echo "$_ARGS" | grep -oE '^[a-zA-Z]+:' | tr -d ':' | tr '[:upper:]' '[:lower:]')
-_QUERY=$(echo "$_ARGS" | sed -E 's/^[a-zA-Z]+:\s*//')
+# \s 는 GNU sed 확장이라 macOS(BSD sed)에서 무시된다 → POSIX 문자클래스 사용
+_QUERY=$(echo "$_ARGS" | sed -E 's/^[a-zA-Z]+:[[:space:]]*//')
 
 # 접두어 없으면 원본 쿼리 사용
 if [ -z "$_PREFIX" ]; then

@@ -134,7 +134,7 @@ PASS_CTX = re.compile(
     re.IGNORECASE
 )
 
-url_pat = re.compile(r'https?://[a-zA-Z0-9._:/@-]+(?:/[^\s\'"<>]*)?')
+url_pat = re.compile(r'https?://[a-zA-Z0-9._:/@-]+(?:/[^\s\x27\x22<>]*)?')
 exclude = {'example', 'placeholder', 'xxx'}
 
 seen = set()

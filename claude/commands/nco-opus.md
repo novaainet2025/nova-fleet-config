@@ -13,11 +13,11 @@
 ## 세션 초기화
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-opus" "0" "세션시작" "start" "$ARGUMENTS"
+bash ~/projects/scripts/nco-session-log.sh "nco-opus" "0" "세션시작" "start" "$ARGUMENTS"
 echo "═══════════════════════════════════════════"
 echo "  OPUS COMMANDER — Strategic Orchestrator"
 echo "═══════════════════════════════════════════"
-echo "[진행 모니터] 새 터미널에서: python3 ~/projects/nco-progress.py"
+echo "[진행 모니터] 새 터미널에서: python3 ~/projects/scripts/nco-progress.py"
 ```
 
 ---
@@ -25,7 +25,7 @@ echo "[진행 모니터] 새 터미널에서: python3 ~/projects/nco-progress.py
 ## PHASE 1: 상황 분석 (ANALYZE)
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-opus" "P1" "상황분석" "start" "$ARGUMENTS"
+bash ~/projects/scripts/nco-session-log.sh "nco-opus" "P1" "상황분석" "start" "$ARGUMENTS"
 
 # NCO 서버 상태
 echo "── NCO 상태 ──"
@@ -74,7 +74,7 @@ try:
 except: print('프로바이더 조회 불가')
 "
 
-bash ~/projects/nco-session-log.sh "nco-opus" "P1" "상황분석" "done" "상황 분석 완료"
+bash ~/projects/scripts/nco-session-log.sh "nco-opus" "P1" "상황분석" "done" "상황 분석 완료"
 ```
 
 $ARGUMENTS를 분석하여 다음을 판단한다:
@@ -102,7 +102,7 @@ $ARGUMENTS를 분석하여 다음을 판단한다:
 ## PHASE 2: 설계 + 에이전트 매핑 (DESIGN)
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-opus" "P2" "설계" "start" "작업 분해 + 에이전트 매핑"
+bash ~/projects/scripts/nco-session-log.sh "nco-opus" "P2" "설계" "start" "작업 분해 + 에이전트 매핑"
 ```
 
 작업을 독립 단위로 분해한다 (각 단위 = 파일 1-2개):
@@ -117,10 +117,9 @@ UI/스키마 설계     → agy (score:85)
 리서치/문서        → copilot (score:75)
 범용 추론          → openrouter (score:75, 무료)
 로컬 검증          → ollama (score:75, 무료)
-복잡 추론          → nvidia (Nemotron-Super-49B, 무료)
 ```
 
-**비용 최적화 원칙**: 무료 우선(ollama→openrouter→nvidia), 복잡한 것만 유료
+**비용 최적화 원칙**: 무료 우선(ollama→openrouter), 복잡한 것만 유료
 
 **의존성 판별**:
 - 독립 작업 → `par` (병렬 실행 가능)
@@ -142,7 +141,7 @@ UI/스키마 설계     → agy (score:85)
 ```
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-opus" "P2" "설계" "done" "설계 완료: 태스크 N개 (병렬:N, 순차:N)"
+bash ~/projects/scripts/nco-session-log.sh "nco-opus" "P2" "설계" "done" "설계 완료: 태스크 N개 (병렬:N, 순차:N)"
 ```
 
 ---
@@ -150,7 +149,7 @@ bash ~/projects/nco-session-log.sh "nco-opus" "P2" "설계" "done" "설계 완�
 ## PHASE 3: Plan 생성 + Task 등록 (PLAN)
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-opus" "P3" "Plan생성" "start" "Plan+칸반 태스크 생성"
+bash ~/projects/scripts/nco-session-log.sh "nco-opus" "P3" "Plan생성" "start" "Plan+칸반 태스크 생성"
 
 # Plan 파일 생성
 mkdir -p docs/plans
@@ -183,7 +182,7 @@ echo "Plan 생성: $PLAN_FILE"
 ```
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-opus" "P3" "Plan생성" "done" "$PLAN_FILE"
+bash ~/projects/scripts/nco-session-log.sh "nco-opus" "P3" "Plan생성" "done" "$PLAN_FILE"
 ```
 
 ---
@@ -191,7 +190,7 @@ bash ~/projects/nco-session-log.sh "nco-opus" "P3" "Plan생성" "done" "$PLAN_FI
 ## PHASE 4: 작업 배분 (DISPATCH)
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-opus" "P4" "작업배분" "start" "Mesh세션+에이전트에 작업 배분"
+bash ~/projects/scripts/nco-session-log.sh "nco-opus" "P4" "작업배분" "start" "Mesh세션+에이전트에 작업 배분"
 ```
 
 ### 배분 우선순위:
@@ -262,7 +261,7 @@ except: print('태스크 생성 완료')
 ```
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-opus" "P4" "작업배분" "done" "배분 완료: Mesh N개 + 에이전트 N개"
+bash ~/projects/scripts/nco-session-log.sh "nco-opus" "P4" "작업배분" "done" "배분 완료: Mesh N개 + 에이전트 N개"
 ```
 
 ---
@@ -270,7 +269,7 @@ bash ~/projects/nco-session-log.sh "nco-opus" "P4" "작업배분" "done" "배분
 ## PHASE 5: 감독 + 에러 대응 (MONITOR)
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-opus" "P5" "감독" "start" "실시간 모니터링 시작"
+bash ~/projects/scripts/nco-session-log.sh "nco-opus" "P5" "감독" "start" "실시간 모니터링 시작"
 ```
 
 ### 상태 확인:
@@ -360,7 +359,7 @@ openrouter     → vllm (단순) 또는 codex (복잡)
 ```
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-opus" "P5" "감독" "done" "감독 완료: 성공 N개, 실패 N개, 재위임 N개"
+bash ~/projects/scripts/nco-session-log.sh "nco-opus" "P5" "감독" "done" "감독 완료: 성공 N개, 실패 N개, 재위임 N개"
 ```
 
 ---
@@ -368,7 +367,7 @@ bash ~/projects/nco-session-log.sh "nco-opus" "P5" "감독" "done" "감독 완�
 ## PHASE 6: Gap 분석 + E2E 검증 (VERIFY)
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-opus" "P6" "검증" "start" "Gap분석 + E2E 검증 시작"
+bash ~/projects/scripts/nco-session-log.sh "nco-opus" "P6" "검증" "start" "Gap분석 + E2E 검증 시작"
 ```
 
 ### 6-1. 에이전트 병렬 검증:
@@ -443,7 +442,7 @@ Gap Rate = 총점 / 100 × 100 (목표: 100%)
 ```
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-opus" "P6" "검증" "done" "Gap Rate: XX% (tsc:${TSC_ERRORS} lint:${LINT_ERRORS})"
+bash ~/projects/scripts/nco-session-log.sh "nco-opus" "P6" "검증" "done" "Gap Rate: XX% (tsc:${TSC_ERRORS} lint:${LINT_ERRORS})"
 ```
 
 출력:
@@ -468,10 +467,10 @@ tsc 에러: N개 | lint 에러: N개
 
 ```bash
 # 100% 미만 — 재설계 루프
-bash ~/projects/nco-session-log.sh "nco-opus" "P7" "루프판단" "loop" "Gap XX% < 100% — PHASE 2로 재설계 (N/5회)"
+bash ~/projects/scripts/nco-session-log.sh "nco-opus" "P7" "루프판단" "loop" "Gap XX% < 100% — PHASE 2로 재설계 (N/5회)"
 
 # 100% 이상 — 완료 보고
-bash ~/projects/nco-session-log.sh "nco-opus" "P7" "루프판단" "done" "Gap XX% ≥ 100% — 작업 완료"
+bash ~/projects/scripts/nco-session-log.sh "nco-opus" "P7" "루프판단" "done" "Gap XX% ≥ 100% — 작업 완료"
 ```
 
 ### < 100%일 때 (LOOP):
@@ -488,7 +487,7 @@ bash ~/projects/nco-session-log.sh "nco-opus" "P7" "루프판단" "done" "Gap XX
 ### >= 100%일 때 (REPORT):
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-opus" "DONE" "완료보고" "start" "최종 보고서 작성"
+bash ~/projects/scripts/nco-session-log.sh "nco-opus" "DONE" "완료보고" "start" "최종 보고서 작성"
 
 mkdir -p docs/opus-reports
 REPORT_FILE="docs/opus-reports/$(date '+%Y%m%d-%H%M%S')-opus-report.md"
@@ -523,10 +522,10 @@ REPORT_EOF
 
 echo "보고서: $REPORT_FILE"
 
-bash ~/projects/nco-session-log.sh "nco-opus" "DONE" "완료보고" "done" "$REPORT_FILE"
+bash ~/projects/scripts/nco-session-log.sh "nco-opus" "DONE" "완료보고" "done" "$REPORT_FILE"
 ```
 
 진행 모니터 최종 확인:
 ```bash
-python3 ~/projects/nco-progress.py --once
+python3 ~/projects/scripts/nco-progress.py --once
 ```

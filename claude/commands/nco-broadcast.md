@@ -8,7 +8,11 @@ if [ -z "$MSG" ]; then
   exit 1
 fi
 
-curl -s -X POST http://localhost:6200/api/chat/messages \
+# /api/chat/messages 가 아니라 /api/broadcast 로 보낸다.
+# chat/messages 핸들러는 body.message 와 body.ai 만 읽고 broadcast 플래그는 무시하므로
+# 기본 에이전트 1개에게만 전달됐다(브로드캐스트가 아니었다).
+# /api/broadcast 는 agentManager.listEnabledIds() 전체로 팬아웃한다.
+curl -s -X POST http://localhost:6200/api/broadcast \
   -H "Content-Type: application/json" \
-  -d "{\"message\": $(echo "$MSG" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().strip()))'), \"broadcast\": true}" \
+  -d "{\"message\": $(printf '%s' "$MSG" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().strip()))')}" \
   | python3 -m json.tool 2>/dev/null || echo "[오류] NCO 서버 응답 없음."

@@ -1,3 +1,7 @@
+---
+description: NCO 백엔드를 중지합니다.
+dangerous: true
+---
 # NCO 백엔드를 중지합니다.
 # 사용법: /nco-stop-1
 

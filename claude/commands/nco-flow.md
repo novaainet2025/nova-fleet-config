@@ -8,7 +8,7 @@
 # Phase B (2026-05-25 추가): STAGE 3 토론 + 4 합의 + 8 교차검증 3-way + 6.5 Mesh 브로드캐스트
 # Phase C (예정): STAGE 5 테스트/검증 문서 자동 + hwpforge 변환
 #
-# 모든 위임은 MCP 도구(Skill 또는 mcp__nco-commands__*)로 호출하여
+# 모든 위임은 MCP 도구(mcp__nco__nco_*) 또는 Skill 로 호출하여
 # /tmp/nco-stages-${SID}.json 자동 마킹 → Phase 1 워크플로우 게이트와 통합.
 
 ---
@@ -61,14 +61,14 @@ echo "── 맥락 노트 (최신 1세션) ──"
 python3 -c "
 import re
 try:
-    text = open('/home/nova/projects/context_note.md').read()
+    text = open(os.path.expanduser('~/projects/context_note.md')).read()
     blocks = re.findall(r'<!-- SESSION_START -->(.*?)<!-- SESSION_END -->', text, re.DOTALL)
     print(blocks[0].strip()[:400] if blocks else text[:400])
 except: pass" 2>/dev/null
 
 echo ""
 echo "── 이전 세션 개선 권고 ──"
-ls -t /home/nova/.claude/improvements/*.md 2>/dev/null | head -1 | xargs -I{} grep -oP '\[High\][^\n]+' {} 2>/dev/null | head -3
+ls -t "$HOME"/.claude/improvements/*.md 2>/dev/null | head -1 | xargs -I{} grep -oP '\[High\][^\n]+' {} 2>/dev/null | head -3
 ```
 
 ---
@@ -82,13 +82,13 @@ $ARGUMENTS 와 STAGE 1 결과를 종합해 다음을 결정:
 | `task_type` | bug / new_feature / config / research | 동사·키워드·범위 |
 | `complexity` | 1-10 | 파일 수, 의존성, 새 기술 도입 |
 | `mode` | task / parallel / commander | complexity 1-3=task, 4-6=parallel, 7+=commander |
-| `primary_agent` | codex / opencode / cursor-agent / agy / nvidia | task_type별 매핑 |
+| `primary_agent` | codex / opencode / cursor-agent / agy | task_type별 매핑 |
 
 **에이전트 매핑** (Phase A는 단일, Phase B에서 3-way 확장):
 - bug → `codex`
 - new_feature → complexity≥6면 `opencode` (설계 먼저), 아니면 `codex`
 - config → `codex`
-- research → `copilot` 또는 `nvidia`
+- research → `copilot` 또는 `opencode`
 
 출력:
 ```
@@ -106,7 +106,7 @@ $ARGUMENTS 와 STAGE 1 결과를 종합해 다음을 결정:
 
 해당 시 자동 호출:
 ```
-mcp__nco-commands__nco-discussion(arguments="opencode,agy,codex: <정제된 의도>. 5턴 cap.")
+mcp__nco__nco_discussion({prompt: "<정제된 의도>", providers: "opencode,agy,codex", maxRounds: "5"})
 ```
 
 → `discussion` stage 자동 마킹. 결과(JSON 또는 텍스트)를 STAGE 4로 전달.
@@ -117,7 +117,7 @@ mcp__nco-commands__nco-discussion(arguments="opencode,agy,codex: <정제된 의�
 
 STAGE 3 토론 결과가 있을 때만 발화. 3 이상의 안이 나오면:
 ```
-mcp__nco-commands__nco-consensus(arguments="STAGE 3 토론에서 도출된 안 중 최적 1개를 투표로 선정. 후보: <안1>, <안2>, <안3>")
+mcp__nco__nco_consensus({prompt: "STAGE 3 토론에서 도출된 안 중 최적 1개를 투표로 선정. 후보: <안1>, <안2>, <안3>", providers: "opencode,agy,codex"})
 ```
 
 투표 결과 → `design` stage 자동 마킹.
@@ -135,12 +135,12 @@ mcp__nco-commands__nco-consensus(arguments="STAGE 3 토론에서 도출된 안 �
 Skill(nco-task) <primary_agent> '<정제된 의도 또는 합의된 설계>'
 
 # complexity 7-8 (병렬 위임):
-mcp__nco-commands__nco-team(arguments="codex,cursor-agent: <설계>")
+mcp__nco__nco_parallel({prompt: "<설계>", providers: "codex,cursor-agent"})
 또는
-mcp__nco-commands__nco-conductor(arguments="<설계>")
+mcp__nco__nco_conductor({prompt: "<설계>"})
 
 # complexity ≥ 9 (대형 — Commander 모드):
-mcp__nco-commands__nco-commander(arguments="<설계>")
+mcp__nco__nco_commander({prompt: "<설계>"})
 ```
 
 위임 후 응답을 받아 다음 stage로 전달. 응답이 30초 내 없으면 대체 에이전트 자동 전환 (opus 에러 대체 맵 차용):
@@ -156,11 +156,13 @@ mcp__nco-commands__nco-commander(arguments="<설계>")
 
 활성 mesh 세션에 sub-task을 분산 (autoresponder가 Ollama로 즉시 응답):
 ```bash
-# 정확한 schema: {fromSessionId, fromAgent, toAgent, content, type}
+# 정확한 schema: {fromSessionId, fromAgent?, toSessionId?, content, type}
+# toAgent 는 스키마에 없는 필드다 — 보내도 zod 가 버려서 대상 지정이 되지 않는다.
+# 특정 세션을 지정하려면 toSessionId 에 세션 ID 를 넣고, 생략하면 전체 브로드캐스트다.
 # 진단 결과 2026-05-25: 4 세션 모두 mesh-auto-responder.js 활성, Ollama qwen2.5:3b 폴백 동작
 curl -s -X POST http://localhost:6200/api/mesh/send \
   -H "Content-Type: application/json" \
-  -d '{"fromSessionId":"'${NCO_SESSION_ID:-$$}'","fromAgent":"'${NCO_NAME:-claude-cli}'","toAgent":"*","content":"[TASK] <sub-task 1줄>","type":"task"}'
+  -d '{"fromSessionId":"'${NCO_SESSION_ID:-$$}'","fromAgent":"'${NCO_NAME:-claude-cli}'","content":"[TASK] <sub-task 1줄>","type":"task"}'
 ```
 
 응답 회수: 5초 대기 후 `/api/mesh/messages?to=<나>&limit=10`. 응답 합산해 STAGE 8 교차검증 입력으로 사용.
@@ -175,20 +177,20 @@ curl -s -X POST http://localhost:6200/api/mesh/send \
 
 ```
 # 구현 정확성 — codex 자체 self-check 또는 다른 agent에 정확성 확인
-mcp__nco-commands__nco-task(arguments="codex '자체 정확성 검토 (변경 사항 vs 의도): <변경 요약>'")
+mcp__nco__nco_task({ai: "codex", prompt: "자체 정확성 검토 (변경 사항 vs 의도): <변경 요약>"})
 
 # 보안·품질 — cursor-agent (online인 경우)
-mcp__nco-commands__nco-task(arguments="cursor-agent '리뷰: 보안 취약점·코드 품질 점검. <변경 요약>'")
+mcp__nco__nco_task({ai: "cursor-agent", prompt: "리뷰: 보안 취약점·코드 품질 점검. <변경 요약>"})
 
 # 동작·테스트 — ollama 우선, 오프라인이면 agy fallback
-mcp__nco-commands__nco-task(arguments="ollama '검증: 동작·테스트 통과 여부. <변경 요약>'")
+mcp__nco__nco_task({ai: "ollama", prompt: "검증: 동작·테스트 통과 여부. <변경 요약>"})
 ```
 
 → `review` + `verification` stages 자동 마킹.
 
 **3개 결과 비교 로직**:
 - 3개 모두 PASS → 통과, STAGE 9로
-- 1-2개 FAIL → 합의 시도: `mcp__nco-commands__nco-consensus(arguments="3가지 검증 결과 통합. 최종 판정.")` → 결과로 STAGE 10 루프 분기 결정
+- 1-2개 FAIL → 합의 시도: `mcp__nco__nco_consensus({prompt: "3가지 검증 결과 통합. 최종 판정.", providers: "codex,cursor-agent,ollama"})` → 결과로 STAGE 10 루프 분기 결정
 - 3개 모두 FAIL → STAGE 10 즉시 루프 (큰 문제)
 
 **에이전트 오프라인 폴백 매트릭스**:
@@ -227,9 +229,9 @@ echo "테스트: $([ $TEST_OK = 1 ] && echo '통과' || echo 'N/A 또는 실패'
 - 성능 10 — 명백한 문제 0?
 - 문서화 10 — 변경 사항이 자명?
 
-Gap 추가 검증은 `mcp__nco-commands__nco-analyze` 호출로 stage 마킹과 동시에 수행:
+Gap 추가 검증은 `Skill(nco-analyze)` 호출로 stage 마킹과 동시에 수행 (nco-analyze 는 MCP 도구가 아니라 슬래시 커맨드/Skill 이다):
 ```
-mcp__nco-commands__nco-analyze(arguments="Gap 분석 (간결, 100% 루프 비활성): <변경 요약>. tsc=N lint=N. 100점 기준 점수와 미흡 항목만 보고.")
+Skill(nco-analyze) "Gap 분석 (간결, 100% 루프 비활성): <변경 요약>. tsc=N lint=N. 100점 기준 점수와 미흡 항목만 보고."
 ```
 
 출력:
@@ -328,7 +330,7 @@ echo "[STAGE 11] 보고서 저장: $REPORT"
 이 명령은 모든 위임을 MCP 도구로 수행하므로:
 - `implementation` ← Skill(nco-task) codex 호출 시
 - `review` ← cursor-agent 호출 시 (STAGE 10 미흡 시)
-- `gap_analysis` ← mcp__nco-commands__nco-analyze 호출 시 (STAGE 9)
+- `gap_analysis` ← Skill(nco-analyze) 호출 시 (STAGE 9)
 - `verification` ← ollama 호출 시 (STAGE 10 테스트 실패 보강 시)
 
 → Stop 시점에 `nco-stop-quality-gate.sh` GATE 0가 통과해야 정상 완료.
@@ -348,7 +350,7 @@ echo "[STAGE 11] 보고서 저장: $REPORT"
 올바른 send 형식 — 이전 `{from, to, message}` 패턴은 **모두 깨져있음**:
 ```json
 POST /api/mesh/send
-{"fromSessionId":"<SID>", "fromAgent":"<NAME>", "toAgent":"<NAME|*>", "content":"<MSG>", "type":"info|task"}
+{"fromSessionId":"<SID>", "fromAgent":"<NAME>", "toSessionId":"<SESSION_ID>(생략 시 전체)", "content":"<MSG>", "type":"info|task"}
 ```
 
 응답: `{"delivered": N}` (수신 세션 수)

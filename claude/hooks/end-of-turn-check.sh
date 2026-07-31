@@ -137,13 +137,13 @@ CHANGED_COUNT=$(to_int "$CHANGED_COUNT")
 # 변경 파일 요약 (확장자별 카운트)
 FILE_SUMMARY=""
 if [ "$CHANGED_COUNT" -gt 0 ]; then
-    FILE_SUMMARY=$(echo "$ALL_CHANGED" | sed 's/.*\.//' | sort | uniq -c | sort -rn | head -5 | awk '{printf "%s(%d) ", $2, $1}')
+    FILE_SUMMARY=$(echo "$ALL_CHANGED" | LC_ALL=C sed 's/.*\.//' | sort | uniq -c | sort -rn | head -5 | awk '{printf "%s(%d) ", $2, $1}')
 fi
 
 # 추가/삭제 라인 수
 DIFF_STAT=$(git diff --stat 2>/dev/null | tail -1)
-ADDITIONS=$(echo "$DIFF_STAT" | grep -oP '\d+(?= insertion)' || echo "0")
-DELETIONS=$(echo "$DIFF_STAT" | grep -oP '\d+(?= deletion)' || echo "0")
+ADDITIONS=$(echo "$DIFF_STAT" | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+' || echo "0")
+DELETIONS=$(echo "$DIFF_STAT" | grep -oE '[0-9]+ deletion' | grep -oE '[0-9]+' || echo "0")
 ADDITIONS=$(to_int "$ADDITIONS")
 DELETIONS=$(to_int "$DELETIONS")
 
@@ -224,7 +224,7 @@ parse_tasks_from_file() {
                 DONE_TASKS=$((DONE_TASKS + 1))
             else
                 local text
-                text=$(echo "$line" | sed 's/^\s*-\s*\[ \]\s*//')
+                text=$(echo "$line" | LC_ALL=C sed 's/^\s*-\s*\[ \]\s*//')
                 PENDING_TASKS="${PENDING_TASKS}  - ${text}\n"
                 PENDING_TASK_LIST="${PENDING_TASK_LIST}${text}|"
             fi
@@ -312,7 +312,7 @@ echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) turn=${TURN_COUNT} gap=${GAP_RATE}% grade=$
 cat > "$NCO_STATE" <<STATEEOF
 {
   "session_id": "$NCO_SESSION_ID",
-  "session_title": "$(echo "$SESSION_TITLE" | sed 's/"/\\"/g')",
+  "session_title": "$(echo "$SESSION_TITLE" | LC_ALL=C sed 's/"/\\"/g')",
   "turn": $TURN_COUNT,
   "changed_files": $CHANGED_COUNT,
   "additions": $ADDITIONS,
@@ -323,7 +323,7 @@ cat > "$NCO_STATE" <<STATEEOF
   "done_tasks": $DONE_TASKS,
   "gap_rate": $GAP_RATE,
   "grade": "$GRADE",
-  "eval": "$(echo "$EVAL_SUMMARY" | sed 's/"/\\"/g')",
+  "eval": "$(echo "$EVAL_SUMMARY" | LC_ALL=C sed 's/"/\\"/g')",
   "last_check": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 }
 STATEEOF
@@ -333,6 +333,18 @@ STATEEOF
 # ═══════════════════════════════════════════════════════════
 
 THRESHOLD=95
+
+# ── [지식다이어트 감사 수정 2026-07-23] 무한 "Gap 45%" 루프 근본원인 제거 ──
+# GAP_RATE는 docs/plans/*.md 전역 체크박스 합산이라 현재 턴과 무관하다. 텍스트·리뷰·
+# 보고·질문 턴은 이 전역 비율을 못 올려 영원히 THRESHOLD 미달 → exit 2 무한 재실행.
+# 완료 게이트는 "이번 턴의 실제 검증"에만 걸어야 한다: 코드 미변경이거나 빌드가
+# 깨끗하면(tsc/lint 0) 전역 backlog와 무관하게 통과. 실제 tsc/lint 오류가 있는
+# 코드 변경 턴만 exit 2로 재수정을 강제한다. (전역 비율은 표시/자가평가용으로만 유지)
+if [ "$CHANGED_COUNT" -eq 0 ] || { [ "$TSC_ERRORS" -eq 0 ] && [ "$LINT_ERRORS" -eq 0 ]; }; then
+    GATE_PASS=1
+else
+    GATE_PASS=0
+fi
 
 # ── 공통 헤더 ──
 HEADER=$(cat <<HDREOF
@@ -354,14 +366,14 @@ EVAL_BLOCK=$(cat <<EVALEOF
 EVALEOF
 )
 
-if [ "$GAP_RATE" -ge "$THRESHOLD" ]; then
+if [ "$GAP_RATE" -ge "$THRESHOLD" ] || [ "$GATE_PASS" -eq 1 ]; then
     # ═══ PASS ═══
 
     # 다음 작업 후보 (최대 5개)
     NEXT_TASKS=""
     for plan_file in docs/plans/*.md .llm/todo.md; do
         if [ -f "$plan_file" ]; then
-            NEXT=$(grep -m 5 '^\s*-\s*\[ \]' "$plan_file" 2>/dev/null | sed 's/^\s*-\s*\[ \]\s*//' | head -5)
+            NEXT=$(grep -m 5 '^\s*-\s*\[ \]' "$plan_file" 2>/dev/null | LC_ALL=C sed 's/^\s*-\s*\[ \]\s*//' | head -5)
             if [ -n "$NEXT" ]; then
                 NEXT_TASKS="${NEXT_TASKS}${NEXT}\n"
             fi

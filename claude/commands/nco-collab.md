@@ -9,9 +9,12 @@ case "$ACTION" in
     TITLE="${2:-협업 세션}"
     TYPE="${3:-brainstorm}"
     SESSION_ID="${NCO_SESSION_ID:-$(hostname)-$$}"
-    curl -s -X POST "$BASE/api/collab/create" \
+    # 생성 엔드포인트는 /api/collab/create 가 아니라 POST /api/collab 이다.
+    # (create 경로는 서버에 없어서 catch-all 이 HTTP 200 스텁을 돌려주고 있었다.)
+    # 스키마: {title, type?, description?, createdBy?} — creatorSessionId/creatorAgentId 는 없는 필드다.
+    curl -s -X POST "$BASE/api/collab" \
       -H "Content-Type: application/json" \
-      -d "{\"creatorSessionId\":\"$SESSION_ID\",\"creatorAgentId\":\"claude-code\",\"title\":\"$TITLE\",\"type\":\"$TYPE\"}" \
+      -d "{\"title\":\"$TITLE\",\"type\":\"$TYPE\",\"createdBy\":\"$SESSION_ID\"}" \
       | python3 -m json.tool
     ;;
   join)
@@ -34,22 +37,30 @@ case "$ACTION" in
       | python3 -m json.tool
     ;;
   vote)
-    # nco-collab vote <contribution-id> <1|-1>
-    CONTRIB_ID="$2"
-    VOTE="${3:-1}"
+    # nco-collab vote <collab-id> <contribution-id> [1|-1]
+    #
+    # 2026-07-29 인자 순서 변경: 이전에는 <contrib-id> <1|-1> <collab-id> 였는데
+    #  (a) join/contribute/close/show 는 전부 $2 가 collab-id 라 vote 만 달랐고
+    #  (b) collab-id 를 생략하면 "unknown" 이 들어가 /api/collab/unknown/vote 로
+    #      요청이 나가 무조건 실패했다(조용한 실패).
+    # 이제 다른 액션과 순서를 통일하고 두 인자를 필수로 강제한다.
+    COLLAB_ID="$2"
+    CONTRIB_ID="$3"
+    VOTE="${4:-1}"
     SESSION_ID="${NCO_SESSION_ID:-$(hostname)-$$}"
-    COLLAB_ID="${4:-unknown}"
+    if [ -z "$COLLAB_ID" ] || [ -z "$CONTRIB_ID" ]; then
+      echo "사용법: nco-collab vote <collab-id> <contribution-id> [1|-1]"
+      echo "  collab-id 와 contribution-id 는 필수입니다."
+      echo "  기여 ID 는 'nco-collab show <collab-id>' 로 확인하세요."
+      exit 1
+    fi
+    # 스키마는 {agentId, choice, vote?} 다. choice 가 투표 대상 기여 ID,
+    # agentId 가 투표자다. 이전 필드명(contributionId/voterSessionId)은
+    # 스키마에 없어서 항상 400 으로 떨어졌다.
     curl -s -X POST "$BASE/api/collab/$COLLAB_ID/vote" \
       -H "Content-Type: application/json" \
-      -d "{\"contributionId\":\"$CONTRIB_ID\",\"voterSessionId\":\"$SESSION_ID\",\"vote\":$VOTE}" \
+      -d "{\"choice\":\"$CONTRIB_ID\",\"agentId\":\"$SESSION_ID\",\"vote\":$VOTE}" \
       | python3 -m json.tool
-    ;;
-  voting)
-    # nco-collab voting <collab-id>
-    COLLAB_ID="$2"
-    curl -s -X POST "$BASE/api/collab/$COLLAB_ID/voting" \
-      -H "Content-Type: application/json" \
-      -d '{}' | python3 -m json.tool
     ;;
   close)
     # nco-collab close <collab-id> [result]
@@ -95,12 +106,13 @@ else:
 "
     ;;
   *)
-    echo "사용법: nco-collab <create|join|contribute|vote|voting|close|show|list>"
+    echo "사용법: nco-collab <create|join|contribute|vote|close|show|list>"
     echo "  create   <title> [type]         새 협업 세션 생성"
     echo "  join     <id>                   협업 참여"
     echo "  contribute <id> <content>       아이디어/결과 제출"
-    echo "  vote     <contrib-id> <1|-1> <collab-id>  투표"
-    echo "  voting   <id>                   투표 단계 시작"
+    echo "  vote     <collab-id> <contrib-id> [1|-1]  투표 (기본 1)"
+    echo "                                  첫 투표 시 투표 단계가 자동 시작됨."
+    echo "                                  투표 단계만 따로 여는 명령은 없습니다."
     echo "  close    <id> [result]          협업 종료"
     echo "  show     <id>                   상세 보기"
     echo "  list                            진행 중인 협업 목록"

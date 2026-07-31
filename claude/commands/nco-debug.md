@@ -55,6 +55,6 @@ case "$cmd" in
     echo "  POST ${PROXY_URL}/debug/recover  — body: {\"action\":\"auto\"}"
     echo ""
     echo "  MCP 도구 (Claude가 직접 호출):"
-    echo "  nco_proxy_debug({ action: \"status|errors|test|recover|recover:model_refresh|...\" })"
+    echo "  nco_ollama_debug({ action: \"status|errors|test|recover\" })"
     ;;
 esac

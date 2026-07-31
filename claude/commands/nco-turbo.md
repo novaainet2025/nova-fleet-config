@@ -10,7 +10,11 @@
 # ──────────────────────────────────────────────────────────────────
 
 NCO_URL="http://localhost:6200"
-OLLAMA_URL="http://172.28.112.1:11434"
+# 2026-07-29 수정: 172.28.112.1 은 WSL 게이트웨이 IP 하드코딩이라 그 밖의 머신에서는
+# 도달 불가(HTTP 000)였고, ollama_chat() 이 조용히 실패해 작업 분해가 항상 하드코딩
+# 스텁으로 떨어졌다. 환경변수로 덮어쓸 수 있게 하고 기본값은 로컬로 둔다.
+# WSL 에서는 OLLAMA_BASE_URL=http://<게이트웨이IP>:11434 를 export 하면 종전대로 동작한다.
+OLLAMA_URL="${OLLAMA_URL:-${OLLAMA_BASE_URL:-http://127.0.0.1:11434}}"
 MAIN_TASK="${ARGUMENTS:-현재 프로젝트 전체 개선}"
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 PROJECT_NAME=$(basename "$PROJECT_DIR")

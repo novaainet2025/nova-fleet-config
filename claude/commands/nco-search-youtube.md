@@ -13,9 +13,11 @@
 
 ```bash
 _ARGS="$ARGUMENTS"
-_TYPE=$(echo "$_ARGS" | grep -oE '\-\-type\s+\w+' | awk '{print $2}')
+# \s, \w 는 GNU 확장이다. macOS 기본 grep/sed 에서는 매칭이 되지 않아
+# --type 이 제거되지 않고 검색 쿼리에 그대로 섞여 들어간다. POSIX 문자클래스로 교체.
+_TYPE=$(echo "$_ARGS" | grep -oE -- '--type[[:space:]]+[[:alnum:]_]+' | awk '{print $2}')
 _TYPE="${_TYPE:-tutorial}"
-_QUERY=$(echo "$_ARGS" | sed -E 's/--type\s+\w+\s*//')
+_QUERY=$(echo "$_ARGS" | sed -E 's/--type[[:space:]]+[[:alnum:]_]+[[:space:]]*//')
 
 echo "# YouTube 검색: $_QUERY"
 echo "타입: $_TYPE | $(date '+%Y-%m-%d %H:%M:%S')"

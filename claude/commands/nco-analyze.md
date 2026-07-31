@@ -11,10 +11,10 @@
 
 # ```bash
 # 현재 터미널 옆에 새 터미널을 열고 아래 명령을 실행하면 실시간 진행이 보인다
-# python3 ~/projects/nco-progress.py
+# python3 ~/projects/scripts/nco-progress.py
 
 # 세션 로그 초기화
-bash ~/projects/nco-session-log.sh "nco-analyze" "0" "세션시작" "start" "$ARGUMENTS"
+bash ~/projects/scripts/nco-session-log.sh "nco-analyze" "0" "세션시작" "start" "$ARGUMENTS"
 ```
 
 ---
@@ -24,9 +24,9 @@ bash ~/projects/nco-session-log.sh "nco-analyze" "0" "세션시작" "start" "$AR
 NCO 서버 상태를 확인하고 세션을 등록한다:
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-analyze" "0" "사전확인" "start" "NCO 서버 확인 중"
+bash ~/projects/scripts/nco-session-log.sh "nco-analyze" "0" "사전확인" "start" "NCO 서버 확인 중"
 curl -s http://localhost:6200/health | python3 -c "import sys,json; d=json.load(sys.stdin); print('NCO', d.get('status','?'), '| 에이전트:', d.get('runtime',{}).get('agentsOnline',0), '개')"
-bash ~/projects/nco-session-log.sh "nco-analyze" "0" "사전확인" "done" "서버 확인 완료"
+bash ~/projects/scripts/nco-session-log.sh "nco-analyze" "0" "사전확인" "done" "서버 확인 완료"
 ```
 
 온라인이면 NCO API를 사용하고, 오프라인이면 직접 분석 모드로 전환하되 사용자에게 알린다.
@@ -36,7 +36,7 @@ bash ~/projects/nco-session-log.sh "nco-analyze" "0" "사전확인" "done" "서�
 ## STEP 1: 분석 유형 자동 판별 및 최적 AI 선정
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-analyze" "1" "유형판별" "start" "$ARGUMENTS"
+bash ~/projects/scripts/nco-session-log.sh "nco-analyze" "1" "유형판별" "start" "$ARGUMENTS"
 ```
 
 $ARGUMENTS 내용을 분석하여 유형을 판별하고 최적 프로바이더를 선정한다:
@@ -53,7 +53,7 @@ $ARGUMENTS 내용을 분석하여 유형을 판별하고 최적 프로바이더�
 
 선정 결과를 출력하고 세션에 기록한다:
 ```bash
-bash ~/projects/nco-session-log.sh "nco-analyze" "1" "유형판별" "done" "선정AI: <선정된 AI 목록>"
+bash ~/projects/scripts/nco-session-log.sh "nco-analyze" "1" "유형판별" "done" "선정AI: <선정된 AI 목록>"
 ```
 
 출력 형식:
@@ -70,7 +70,7 @@ bash ~/projects/nco-session-log.sh "nco-analyze" "1" "유형판별" "done" "선�
 ## STEP 2: 병렬 심층 분석
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-analyze" "2" "병렬분석" "start" "선정 AI에게 동시 분석 요청"
+bash ~/projects/scripts/nco-session-log.sh "nco-analyze" "2" "병렬분석" "start" "선정 AI에게 동시 분석 요청"
 
 curl -s -X POST http://localhost:6200/api/realtime/parallel \
   -H "Content-Type: application/json" \
@@ -79,7 +79,7 @@ curl -s -X POST http://localhost:6200/api/realtime/parallel \
     \"providers\": [\"<선정AI1>\", \"<선정AI2>\", \"<선정AI3>\"]
   }" | python3 -m json.tool
 
-bash ~/projects/nco-session-log.sh "nco-analyze" "2" "병렬분석" "done" "병렬 분석 요청 완료, 결과 수신 대기"
+bash ~/projects/scripts/nco-session-log.sh "nco-analyze" "2" "병렬분석" "done" "병렬 분석 요청 완료, 결과 수신 대기"
 ```
 
 진행 상황 확인:
@@ -99,7 +99,7 @@ NCO 오프라인 시: WebSearch 도구로 직접 다각도 분석을 수행한�
 ## STEP 3: 멀티 AI 비판적 토론
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-analyze" "3" "멀티토론" "start" "비판적 토론 세션 시작"
+bash ~/projects/scripts/nco-session-log.sh "nco-analyze" "3" "멀티토론" "start" "비판적 토론 세션 시작"
 
 curl -s -X POST http://localhost:6200/api/realtime/discussion \
   -H "Content-Type: application/json" \
@@ -108,7 +108,7 @@ curl -s -X POST http://localhost:6200/api/realtime/discussion \
     \"mode\": \"discussion\"
   }" | python3 -m json.tool
 
-bash ~/projects/nco-session-log.sh "nco-analyze" "3" "멀티토론" "done" "토론 세션 시작됨"
+bash ~/projects/scripts/nco-session-log.sh "nco-analyze" "3" "멀티토론" "done" "토론 세션 시작됨"
 ```
 
 ---
@@ -116,7 +116,7 @@ bash ~/projects/nco-session-log.sh "nco-analyze" "3" "멀티토론" "done" "토�
 ## STEP 4: 분석 수정 및 개선
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-analyze" "4" "분석수정" "start" "opencode에게 토론 반영 수정 요청"
+bash ~/projects/scripts/nco-session-log.sh "nco-analyze" "4" "분석수정" "start" "opencode에게 토론 반영 수정 요청"
 
 curl -s -X POST http://localhost:6200/api/task \
   -H "Content-Type: application/json" \
@@ -127,7 +127,7 @@ curl -s -X POST http://localhost:6200/api/task \
     \"mode\": \"task\"
   }" | python3 -m json.tool
 
-bash ~/projects/nco-session-log.sh "nco-analyze" "4" "분석수정" "done" "수정 태스크 큐 등록 완료"
+bash ~/projects/scripts/nco-session-log.sh "nco-analyze" "4" "분석수정" "done" "수정 태스크 큐 등록 완료"
 ```
 
 ---
@@ -135,7 +135,7 @@ bash ~/projects/nco-session-log.sh "nco-analyze" "4" "분석수정" "done" "수�
 ## STEP 5: 독립 검증
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-analyze" "5" "독립검증" "start" "vllm에게 독립 검증 요청"
+bash ~/projects/scripts/nco-session-log.sh "nco-analyze" "5" "독립검증" "start" "vllm에게 독립 검증 요청"
 
 curl -s -X POST http://localhost:6200/api/task \
   -H "Content-Type: application/json" \
@@ -146,7 +146,7 @@ curl -s -X POST http://localhost:6200/api/task \
     \"mode\": \"task\"
   }" | python3 -m json.tool
 
-bash ~/projects/nco-session-log.sh "nco-analyze" "5" "독립검증" "done" "검증 태스크 큐 등록 완료"
+bash ~/projects/scripts/nco-session-log.sh "nco-analyze" "5" "독립검증" "done" "검증 태스크 큐 등록 완료"
 ```
 
 ---
@@ -154,7 +154,7 @@ bash ~/projects/nco-session-log.sh "nco-analyze" "5" "독립검증" "done" "검�
 ## STEP 6: Gap 분석 (100% 임계값)
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-analyze" "6" "Gap분석" "gap" "점수 산출 중..."
+bash ~/projects/scripts/nco-session-log.sh "nco-analyze" "6" "Gap분석" "gap" "점수 산출 중..."
 ```
 
 다음 4개 기준으로 점수를 산출한다:
@@ -168,7 +168,7 @@ Gap Rate = (총점 / 100) × 100
 
 ```bash
 # Gap Rate 계산 후 세션에 기록
-bash ~/projects/nco-session-log.sh "nco-analyze" "6" "Gap분석" "done" "Gap Rate: XX% (완전성:XX 정확성:XX 깊이:XX 실행가능:XX)"
+bash ~/projects/scripts/nco-session-log.sh "nco-analyze" "6" "Gap분석" "done" "Gap Rate: XX% (완전성:XX 정확성:XX 깊이:XX 실행가능:XX)"
 ```
 
 출력 형식:
@@ -190,9 +190,9 @@ Gap Rate: XX%  ← 100% 미만이면 루프 재실행
 
 ```bash
 # 100% 미만이면 루프
-bash ~/projects/nco-session-log.sh "nco-analyze" "7" "루프판단" "loop" "Gap XX% — STEP 2로 재실행 (N/3회)"
+bash ~/projects/scripts/nco-session-log.sh "nco-analyze" "7" "루프판단" "loop" "Gap XX% — STEP 2로 재실행 (N/3회)"
 # 100% 이상이면 완료
-bash ~/projects/nco-session-log.sh "nco-analyze" "7" "루프판단" "done" "Gap XX% — 100% 달성, 최종 보고서 출력"
+bash ~/projects/scripts/nco-session-log.sh "nco-analyze" "7" "루프판단" "done" "Gap XX% — 100% 달성, 최종 보고서 출력"
 ```
 
 - **Gap Rate ≥ 100%** → STEP 8 최종 보고서 출력
@@ -204,7 +204,7 @@ bash ~/projects/nco-session-log.sh "nco-analyze" "7" "루프판단" "done" "Gap 
 ## STEP 8: 최종 보고서
 
 ```bash
-bash ~/projects/nco-session-log.sh "nco-analyze" "8" "최종보고" "done" "분석 완료"
+bash ~/projects/scripts/nco-session-log.sh "nco-analyze" "8" "최종보고" "done" "분석 완료"
 ```
 
 보고서를 docs/analysis/ 에 마크다운으로 저장한다:
@@ -243,5 +243,5 @@ echo "보고서 저장: $FILENAME"
 
 진행 모니터 확인:
 ```bash
-python3 ~/projects/nco-progress.py --once
+python3 ~/projects/scripts/nco-progress.py --once
 ```

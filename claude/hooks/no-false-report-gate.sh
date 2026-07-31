@@ -44,10 +44,15 @@ fi
 
 # ── 마지막 user prompt 이후의 assistant text + tool_use 추출 ──────
 run_analysis() {
-python3 <<PYEOF 2>/dev/null
-import json, sys, re
+# heredoc 구분자는 반드시 인용한다(<<'PYEOF').
+# 인용하지 않으면 bash 가 파이썬 본문의 백틱을 명령 치환으로 해석해서
+# 주석 안의 `git branch -r --contains <hash>` 같은 예시까지 실행하려 들고
+# "syntax error near unexpected token" 으로 게이트가 매번 깨진다.
+# 필요한 값은 환경변수로 넘긴다.
+NCO_TRANSCRIPT_PATH="$TRANSCRIPT_PATH" python3 <<'PYEOF' 2>/dev/null
+import json, sys, re, os
 
-TRANSCRIPT = "$TRANSCRIPT_PATH"
+TRANSCRIPT = os.environ.get("NCO_TRANSCRIPT_PATH", "")
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 # 검증 증거로 인정하는 tool. 실제 실행/관찰을 동반하는 것만.
 EVIDENCE_TOOLS = {"Bash", "Read", "Grep", "Glob", "WebFetch", "WebSearch"}
@@ -165,13 +170,26 @@ visual_evidence = bool(re.search(r'(screenshot|스크린샷|localhost:|http://12
 
 # [G6 2026-07-12] 실질검사: '커밋 X를 push했다' 긍정 주장의 hash 추출 → 게이트가 origin 실측 대조.
 # 부정("미push","로컬만","push 안/전/못") 문맥은 제외(정직한 미push 보고를 오차단하지 않도록).
+#
+# [오탐 수정 2026-07-27] full_text 는 '마지막 실제 user 메시지 이후 assistant 전체'라
+# 턴이 쌓일수록 누적된다. 기존 조건은 hash ±70자 안에 'push' 라는 *단어가 있기만 하면*
+# 긍정 주장으로 간주했으므로:
+#   (a) 검증 명령 출력(`git branch -r --contains <hash>` 등)에 딸려온 hash,
+#   (b) 이미 지난 턴에서 '아직 push하지 않았다'고 정직하게 보고한 hash
+# 까지 매턴 재차단됐다(단어 존재 ≠ 긍정 주장). 부정어가 70자 창 밖으로 밀려나면 예외도
+# 무력화돼, 어떤 문구로 다시 써도 해소가 불가능한 루프가 된다. 실제 2026-07-27 세션에서
+# 동일 hash로 6연속 차단 발생. 이제 완료형 서술어가 있을 때만 '주장'으로 본다.
+PUSH_AFFIRM = (r'(?:push(?:ed|했|하였|함|합니다|해서|하고|해뒀|해놓)'
+               r'|푸시\s*(?:했|하였|함|완료|성공)'
+               r'|push\s*(?:완료|성공|됨|되었|했음)'
+               r'|origin\s*(?:에|으로)\s*(?:반영|올렸|올림|전송|반영됨))')
 push_claim_hashes = []
 for _m in re.finditer(r'\b([0-9a-f]{7,40})\b', full_text):
     _h = _m.group(1)
     _ctx = full_text[max(0, _m.start()-70):_m.end()+70]
-    if not re.search(r'push|푸시', _ctx, re.IGNORECASE):
+    if not re.search(PUSH_AFFIRM, _ctx, re.IGNORECASE):
         continue
-    if re.search(r'(미\s*push|안\s*push|못\s*push|push\s*(안|못|전|하지|안함|안됨)|로컬만|미\s*푸시|푸시\s*(안|못|전)|미반영|unpush|not\s*push)', _ctx, re.IGNORECASE):
+    if re.search(r'(미\s*push|안\s*push|못\s*push|push\s*(안|못|전|하지|안함|안됨)|로컬만|로컬에만|로컬\s*저장소에만|미\s*푸시|푸시\s*(안|못|전|하지)|미반영|unpush|not\s*push|않았|없이)', _ctx, re.IGNORECASE):
         continue  # 부정 문맥 = 정직한 '미push' → 검사 대상 아님
     push_claim_hashes.append(_h)
 push_claim_hashes = sorted(set(push_claim_hashes))
