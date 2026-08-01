@@ -3,7 +3,7 @@
 [ "${NCO_HOOK_DISABLED:-0}" = "1" ] && exit 0
 # L3: PreToolUse hook — 신규 기능 첫 코드 편집 차단 (안전망)
 # task_type=new_feature + 코드 파일(.js/.ts/.py/.sh) + 같은 prompt 내
-# mcp__nco-commands__nco-task 호출 0회면 exit 2로 차단.
+# 현재/레거시 NCO 위임 도구 호출 0회면 exit 2로 차단.
 # nco-task 호출은 카운터(/tmp/nco-task-count-$SID)를 +1.
 # 우회: NCO_DIRECT_BYPASS=1.
 
@@ -27,14 +27,14 @@ try: print(json.load(sys.stdin).get('tool_name',''))
 except: pass
 " 2>/dev/null)
 
-# nco-task 호출 → 카운터 +1 (차단 안 함)
+# NCO 위임 호출 → 카운터 +1 (차단 안 함). MCP 서버 이름과 도구 표기법이
+# nco-commands/kebab-case 에서 nco/snake_case 로 바뀐 현재 네임스페이스도 함께 인정한다.
 # R1-C (2026-05-27): flock으로 read-modify-write atomic 보강 (race 방지).
-if [ "$TOOL_NAME" = "mcp__nco-commands__nco-task" ] \
-   || [ "$TOOL_NAME" = "mcp__nco-commands__nco-team" ] \
-   || [ "$TOOL_NAME" = "mcp__nco-commands__nco-parallel" ] \
-   || [ "$TOOL_NAME" = "mcp__nco-commands__nco-flow" ] \
-   || [ "$TOOL_NAME" = "mcp__nco-commands__nco-commander" ] \
-   || [ "$TOOL_NAME" = "mcp__nco-commands__nco-conductor" ]; then
+case "$TOOL_NAME" in
+  mcp__nco-commands__nco-task|mcp__nco-commands__nco-team|mcp__nco-commands__nco-parallel|\
+  mcp__nco-commands__nco-flow|mcp__nco-commands__nco-commander|mcp__nco-commands__nco-conductor|\
+  mcp__nco__nco_task|mcp__nco__nco_team|mcp__nco__nco_parallel|mcp__nco__nco_flow|\
+  mcp__nco__nco_commander|mcp__nco__nco_conductor)
   LOCK_FD_FILE="$COUNTER_FILE.lock"
   : > "$LOCK_FD_FILE" 2>/dev/null  # ensure lock file exists
   if command -v flock >/dev/null 2>&1; then
@@ -58,7 +58,8 @@ if [ "$TOOL_NAME" = "mcp__nco-commands__nco-task" ] \
     echo $((_C + 1)) > "$COUNTER_FILE" 2>/dev/null
   fi
   exit 0
-fi
+  ;;
+esac
 
 # Edit/Write/MultiEdit 아닌 도구는 통과
 case "$TOOL_NAME" in
@@ -96,8 +97,8 @@ if [ "$COUNT" -eq 0 ]; then
 
 [NCO-GATE L3] 신규 기능의 첫 코드 편집은 NCO 위임 필수입니다.
   - 파일: $FILE
-  - 권장: mcp__nco-commands__nco-task ai=codex '...'
-          또는 mcp__nco-commands__nco-flow / nco-team
+  - 권장: mcp__nco__nco_conductor 또는 mcp__nco__nco_task
+          (레거시 mcp__nco-commands__nco-task 도 지원)
   - 우회: 환경변수 NCO_DIRECT_BYPASS=1 설정 후 재호출
 EOF
   exit 2
