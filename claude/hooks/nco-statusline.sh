@@ -583,13 +583,29 @@ fi
 
 PROJECT_NAME=$(basename "${PROJECT_DIR:-project}")
 
-# ── 에이전트 라벨 사전 (등록되지 않은 ID는 자동 슬러그 처리) ──
-declare -A SHORT=(
-  ["claude-code"]="Cla" ["opencode"]="Opn" ["agy"]="Agy"
-  ["codex"]="Cdx" ["cursor-agent"]="Cur"
-  ["copilot"]="Cop" ["openrouter"]="ORT"
-  ["ollama"]="OLL"
-)
+# ── 에이전트 라벨 (macOS 기본 Bash 3.2 호환) ────────────────
+short_label() {
+  case "$1" in
+    claude-code)  printf '%s' 'Cla' ;;
+    opencode)     printf '%s' 'Opn' ;;
+    codex)        printf '%s' 'Cdx' ;;
+    cursor-agent) printf '%s' 'Cur' ;;
+    ollama)       printf '%s' 'OLL' ;;
+    agy)          printf '%s' 'Agy' ;;
+    hermes)       printf '%s' 'Her' ;;
+    *)
+      local _raw _first _rest
+      _raw=$(printf '%s' "$1" | tr -cd 'a-zA-Z0-9' | cut -c1-3)
+      if [ -n "$_raw" ]; then
+        _first=$(printf '%s' "$_raw" | cut -c1 | tr 'a-z' 'A-Z')
+        _rest=$(printf '%s' "$_raw" | cut -c2-)
+        printf '%s%s' "$_first" "$_rest"
+      else
+        printf '%s' '?'
+      fi
+      ;;
+  esac
+}
 
 # ── NCO 연결 상태 (캐시에서 읽기) ────────────────────────────
 API_OK=0; WS_OK=0
@@ -601,72 +617,49 @@ API_OK=${API_OK:-0}; WS_OK=${WS_OK:-0}
 DAEMONS=""
 [ -f "${_CACHE_DIR}/daemons.json" ] && DAEMONS=$(cat "${_CACHE_DIR}/daemons.json" 2>/dev/null)
 
-# ── ORDER 동적 구성 (NCO 실시간 싱크) ─────────────────────────
-# 우선순위:
-#   1. 라이브 /api/daemons — enabled=true 만, evicted_providers 제외
-#   2. health.json — nco-health-monitor.sh 캐시 (백엔드 다운 시)
-#   3. 하드코딩 폴백
-_CAPS_FILE="/Users/nova-ai/.claude/nco-perf/capabilities.json"
-_HEALTH_FILE="/Users/nova-ai/.claude/nco-perf/health.json"
+# ── ORDER 동적 구성 (base + local overlay가 로스터 SSOT) ─────
+_PROVIDER_CONFIG="${NCO_PROVIDER_CONFIG:-/Users/nova-ai/project/nco/config/ai-providers.json}"
+_PROVIDER_LOCAL_CONFIG="${NCO_PROVIDER_LOCAL_CONFIG:-$(dirname "$_PROVIDER_CONFIG")/ai-providers.local.json}"
 ORDER=()
 while IFS= read -r _line; do
   [ -n "$_line" ] && ORDER+=("$_line")
 done < <(
-  CAPS_FILE="$_CAPS_FILE" HEALTH_FILE="$_HEALTH_FILE" DAEMONS_RAW="$DAEMONS" \
-  python3 - <<'PYEOF' 2>/dev/null
-import json, os
-caps_path = os.environ.get("CAPS_FILE","")
-health_path = os.environ.get("HEALTH_FILE","")
-daemons_raw = os.environ.get("DAEMONS_RAW","")
+  python3 - "$_PROVIDER_CONFIG" "$_PROVIDER_LOCAL_CONFIG" <<'PYEOF' 2>/dev/null
+import json, platform, sys
+from pathlib import Path
 
-evicted = set()
-try:
-    caps = json.load(open(caps_path))
-    evicted = set((caps.get("evicted_providers") or {}).keys())
-except Exception:
-    pass
-
-ids = []
-try:
-    if daemons_raw.strip():
-        d = json.loads(daemons_raw)
-        for it in d.get("daemons", []):
-            pid = it.get("id")
-            if not pid or pid in evicted:
-                continue
-            if it.get("enabled") is False:
-                continue
-            ids.append(pid)
-except Exception:
-    ids = []
-
-if not ids:
+base_path, local_path = map(Path, sys.argv[1:3])
+providers = json.loads(base_path.read_text(encoding="utf-8")).get("providers", [])
+overrides = {}
+if local_path.is_file():
     try:
-        h = json.load(open(health_path))
-        for pid, p in (h.get("providers") or {}).items():
-            if pid in evicted: continue
-            if p.get("enabled") is False: continue
-            ids.append(pid)
+        overrides = json.loads(local_path.read_text(encoding="utf-8")).get("overrides", {})
     except Exception:
         pass
-
-if not ids:
-    fallback = ["claude-code","opencode","agy","codex","cursor-agent","copilot","openrouter","ollama"]
-    ids = [x for x in fallback if x not in evicted]
-
-print("\n".join(ids))
+runtime_platform = "darwin" if platform.system() == "Darwin" else "linux"
+if runtime_platform == "linux":
+    try:
+        if "microsoft" in Path("/proc/version").read_text(encoding="utf-8").lower():
+            runtime_platform = "wsl"
+    except OSError:
+        pass
+for original in providers:
+    provider_id = str(original.get("id", ""))
+    provider = {**original, **overrides.get(provider_id, {}), "id": provider_id}
+    platforms = provider.get("platforms")
+    if provider_id and provider.get("enabled") is True and (
+        not platforms or runtime_platform in platforms
+    ):
+        print(provider_id)
 PYEOF
 )
 if [ "${#ORDER[@]}" -eq 0 ]; then
-  ORDER=("claude-code" "opencode" "agy" "codex" "cursor-agent" "copilot" "openrouter" "ollama")
+  ORDER=("claude-code" "opencode" "codex" "cursor-agent" "ollama" "agy" "hermes")
 fi
 
 # ── 에이전트 상태 표시 ─────────────────────────────────────────
 # 상태 파싱은 python3 (jq 미설치 머신 지원 — kangNote에 jq 없음)
-declare -A DSTAT=()
-while IFS=$'\t' read -r _id _rest; do
-  [ -n "$_id" ] && DSTAT[$_id]="$_rest"
-done < <(
+_DSTAT_LINES=$(
   DAEMONS_RAW="$DAEMONS" python3 - <<'PYEOF' 2>/dev/null
 import json, os
 raw = os.environ.get("DAEMONS_RAW","")
@@ -683,36 +676,35 @@ except Exception:
 PYEOF
 )
 
+daemon_state() {
+  local _wanted="$1" _id _rest
+  while IFS=$'\t' read -r _id _rest; do
+    if [ "$_id" = "$_wanted" ]; then
+      printf '%s' "$_rest"
+      return 0
+    fi
+  done <<< "$_DSTAT_LINES"
+  return 1
+}
+
 AI_DISPLAY=""
 ONLINE=0
 for ai in "${ORDER[@]}"; do
-  S="${SHORT[$ai]}"
-  # 미등록 ID는 첫3글자(첫글자 대문자)로 슬러그 라벨 생성 (bash 3.2 / BSD 호환)
-  if [ -z "$S" ]; then
-    _raw=$(echo "$ai" | tr -cd 'a-zA-Z0-9' | cut -c1-3)
-    if [ -n "$_raw" ]; then
-      _first=$(printf '%s' "$_raw" | cut -c1 | tr 'a-z' 'A-Z')
-      _rest=$(printf '%s' "$_raw" | cut -c2-)
-      S="${_first}${_rest}"
-    else
-      S="?"
-    fi
-  fi
+  S="$(short_label "$ai")"
   # NCO CLI 프로바이더는 stateless lazy spawn — 위임 시 subprocess spawn → 종료
   # offline = 휴면 상태(정상). enabled && available 이면 "위임 가능"으로 활성 카운트
-  read -r STATUS ENABLED AVAILABLE <<< "${DSTAT[$ai]:-}"
+  read -r STATUS ENABLED AVAILABLE <<< "$(daemon_state "$ai" || true)"
+  if [ "$ENABLED" != "true" ] || [ "$AVAILABLE" != "true" ]; then
+    AI_DISPLAY="${AI_DISPLAY}${GR}${S}${RST} "
+    continue
+  fi
   case "$STATUS" in
-    working|thinking) AI_DISPLAY="${AI_DISPLAY}${G}${S}${RST} "; ((ONLINE++)) ;;
-    idle)             AI_DISPLAY="${AI_DISPLAY}${C}${S}${RST} "; ((ONLINE++)) ;;
-    offline)
-      if [ "$ENABLED" = "true" ] && [ "$AVAILABLE" = "true" ]; then
-        AI_DISPLAY="${AI_DISPLAY}${DIM}${C}${S}${RST} "; ((ONLINE++))
-      else
-        AI_DISPLAY="${AI_DISPLAY}${GR}${S}${RST} "
-      fi
-      ;;
+    working|thinking) AI_DISPLAY="${AI_DISPLAY}${G}${S}${RST} " ;;
+    idle)             AI_DISPLAY="${AI_DISPLAY}${C}${S}${RST} " ;;
+    offline)          AI_DISPLAY="${AI_DISPLAY}${DIM}${C}${S}${RST} " ;;
     *)                AI_DISPLAY="${AI_DISPLAY}${GR}${S}${RST} " ;;
   esac
+  ((ONLINE++))
 done
 
 [ "$API_OK" = "1" ] && API_C="${G}api✓${RST}" || API_C="${R}api✗${RST}"
@@ -863,13 +855,7 @@ else
       _in_order=0
       for _o in "${ORDER[@]}"; do [ "$_o" = "$_lim_id" ] && _in_order=1 && break; done
       [ "$_in_order" = "1" ] || continue
-      _lim_label="${SHORT[$_lim_id]}"
-      if [ -z "$_lim_label" ]; then
-        _raw=$(echo "$_lim_id" | tr -cd 'a-zA-Z0-9' | cut -c1-3)
-        _first=$(printf '%s' "$_raw" | cut -c1 | tr 'a-z' 'A-Z')
-        _rest=$(printf '%s' "$_raw" | cut -c2-)
-        _lim_label="${_first}${_rest}"
-      fi
+      _lim_label="$(short_label "$_lim_id")"
       _LIMIT_DISP="${_LIMIT_DISP} ${R}${_lim_label}${RST}${R}⛔${RST}"
     done < "$_PLIMIT_FILE"
   fi
