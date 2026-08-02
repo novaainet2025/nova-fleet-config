@@ -7,7 +7,7 @@
 #
 # 인수:  $1 = transcript_path (없으면 이 프로젝트 최신 세션 jsonl 자동탐색)
 # 출력:  human 요약(stderr) + JSON 1줄(stdout)
-# exit:  0 = COMPLETE (모든 목표 ✅해결 또는 Gap>=THRESHOLD)
+# exit:  0 = COMPLETE 또는 BLOCKED (사람의 결정·권한·외부 상태 필요)
 #        2 = INCOMPLETE (진행중/미완 목표 존재 → 루프 계속)
 #        3 = 목표없음(heartbeat) 또는 transcript 미확보 (루프 무의미 → 중단)
 #
@@ -52,6 +52,8 @@ def is_reminder(t):
            'bash $HOME/.claude/hooks/session-goal-check',
            # ScheduleWakeup 감독/루프 프롬프트도 machinery — 목표로 오카운트되어 autoloop 이중구동 방지
            '[FLEET-WATCHDOG', '[BABYSIT', '[AUTONOMOUS-LOOP')
+    # inter-session의 protocol 보고는 실행할 사용자 목표가 아니다.
+    if re.match(r'^(?:done|status|error):', t, re.I): return True
     return t.startswith(adm)
 
 RECEIPT = ('검증 영수증',)
@@ -92,7 +94,8 @@ def has_evidence(txt):
 result = {'goals': [], 'total': 0, 'resolved': 0, 'gap': None,
           'capped': False, 'verdict': 'NO_GOALS', 'gate_blocks': 0,
           'pushback': 0, 'unverified': 0, 'final_receipt': False, 'transcript': path,
-          'evidence_resolved': 0, 'honest_gap': 0}
+          'evidence_resolved': 0, 'honest_gap': 0,
+          'auto_resume': '', 'auto_resume_reason': ''}
 
 if not path or not os.path.exists(path):
     print(json.dumps(result, ensure_ascii=False)); sys.exit(3)
@@ -139,7 +142,55 @@ final_text = '\n'.join(chunks)
 # final_receipt 는 실제 '## 검증 영수증' 헤더로만 판정 (2026-07-12 fix).
 # 산문에서 '검증 영수증'을 언급(예: "이 턴은 검증 영수증이 없습니다")해도 오탐해
 # 질문/잡담 턴에 autoloop 이 오발화하던 문제 차단.
-result['final_receipt'] = bool(re.search(r'(?m)^\s*##\s*검증\s*영수증', final_text))
+_receipt_headers = list(re.finditer(r'(?m)^\s*##\s*검증\s*영수증', final_text))
+result['final_receipt'] = bool(_receipt_headers)
+# autoloop 재진입 중 이전 영수증의 잔여 항목이 누적되어 영구 미완이 되지 않도록
+# 가장 최근 영수증 블록만 현재 중지 판정의 지상진실로 사용한다.
+_final_receipt_text = (final_text[_receipt_headers[-1].start():]
+                       if _receipt_headers else '')
+
+# 최신 영수증의 기계 판독용 종료 의도. blocked는 권한을 넓히지 않고 정상 정지하며,
+# continue는 Gap 숫자와 무관하게 재진입한다. done은 아래의 100%/잔여없음 검증을 통과해야 한다.
+_auto_matches = re.findall(
+    r'(?mi)^\s*-\s*\[자동\s*재진행\]\s*([^\n]+)', _final_receipt_text)
+_auto_raw = _auto_matches[-1].strip() if _auto_matches else ''
+_auto_lower = _auto_raw.lower()
+if re.match(r'^(?:blocked|차단)\b', _auto_lower):
+    _auto_resume = 'blocked'
+    _auto_reason = re.sub(r'^(?:blocked|차단)\s*[:：-]?\s*', '', _auto_raw,
+                          flags=re.I).strip()
+elif re.match(r'^(?:continue|계속|재진행)\b', _auto_lower):
+    _auto_resume = 'continue'; _auto_reason = ''
+elif re.match(r'^(?:done|완료|종료)\b', _auto_lower):
+    _auto_resume = 'done'; _auto_reason = ''
+else:
+    _auto_resume = ''; _auto_reason = ''
+result['auto_resume'] = _auto_resume
+result['auto_resume_reason'] = _auto_reason
+
+# 현재 영수증이 스스로 남은 작업/미검증을 명시하면 Gap 숫자보다 우선한다.
+# 명시적 open item을 무시한 채 [Gap] 100만으로 종료되는 거짓 완료를 차단한다.
+_open_item_re = re.compile(
+    r'(?mi)^\s*-\s*\[(?:미검증\s*항목|남은\s*작업|다음\s*작업)\]\s*([^\n]+)')
+_remaining_matches = list(_open_item_re.finditer(_final_receipt_text))
+_unverified_matches = re.findall(
+    r'(?mi)^\s*-\s*\[미검증\s*항목\]\s*([^\n]+)', _final_receipt_text)
+_unverified_declared = bool(_unverified_matches)
+_unverified_clear = (_unverified_declared and
+                     _unverified_matches[-1].strip() == '없음')
+_receipt_open_items = []
+for _m in _remaining_matches:
+    _item = _m.group(1).strip()
+    _plain = _item.strip().strip('()[]').strip()
+    if not _plain or _plain == '-':
+        continue
+    if re.match(r'^(?:없음|해당\s*없음|none|n/?a|0\s*건|완료)\s*[.!。]?$', _plain, re.I):
+        continue
+    if _item not in _receipt_open_items:
+        _receipt_open_items.append(_item)
+result['receipt_open_items'] = _receipt_open_items[:10]
+result['receipt_unverified_declared'] = _unverified_declared
+result['receipt_unverified_clear'] = _unverified_clear
 result['total'] = len(result['goals'])
 result['resolved'] = sum(1 for g in result['goals'] if g['status'] == '✅해결')
 # [Fix A] 정직 지표: '해결' 중에서도 실제 증거(영수증+T1)를 가진 것만 카운트
@@ -160,14 +211,21 @@ if result['total'] == 0:
 #     - [Gap]% 미기재 시엔 진행/미완 텍스트 신호 부재를 요구(보수적: 애매하면 루프 계속)
 #   종료 가능성 보존: 진짜 완료 턴은 [Gap] 100%(또는 미완신호 없는 영수증)로 종료된다.
 # 영수증 필드 줄(줄머리 '- [Gap] N%')에만 앵커 — 산문 속 '[Gap]100%' 언급 오탐 방지
-_gapm = re.findall(r'(?m)^\s*-\s*\[Gap\][^\n]*?(\d{1,3})\s*%', final_text)
+_gapm = re.findall(r'(?m)^\s*-\s*\[Gap\][^\n]*?(\d{1,3})\s*%', _final_receipt_text)
 _open_sig = ('진행중', '진행 중', '다음 작업', '다음 단계', '보류', '승인 대기',
              '확인 후 진행', '질문:', '이어서 진행', '계속 진행')
 if _gapm:
-    _receipt_done = int(_gapm[-1]) >= THRESHOLD
+    _reported_gap = int(_gapm[-1])
+    _receipt_done = _reported_gap >= THRESHOLD
 else:
-    _receipt_done = not any(s in final_text for s in _open_sig)
-last_promoted = result['final_receipt'] and _receipt_done and result['resolved'] < result['total']
+    _reported_gap = None
+    _receipt_done = not any(s in _final_receipt_text for s in _open_sig)
+_receipt_open = bool(_receipt_open_items)
+result['reported_gap'] = _reported_gap
+_invalid_done = (_auto_resume == 'done' and
+                 (_reported_gap != 100 or not _unverified_clear or _receipt_open))
+last_promoted = (result['final_receipt'] and _receipt_done and not _receipt_open
+                 and result['resolved'] < result['total'])
 result['receipt_done'] = _receipt_done
 eff = result['resolved'] + (1 if last_promoted else 0)
 gap = round(eff / result['total'] * 100)
@@ -175,14 +233,25 @@ result['gap'] = gap
 result['quality_issues'] = {'gate_blocks': gb, 'pushback': pb, 'unverified': unv}
 result['eff_resolved'] = eff
 
-# 판정: 종료조건 = 현재(답변중) 턴 외에 실제로 남은 미완 목표가 없으면 COMPLETE.
-# [2026-07-17 fix] 기존 all_resolved=(eff>=total)은 현재턴이 항상 🔄진행중이라 total에 못 미쳐
-#   INCOMPLETE 고착 → next_steps 가 비어도(할 일 없음) 루프가 상한까지 지속되던 근본원인.
-#   autoloop 이 자동실행할 대상 = 현재턴 제외한 🔄/⏳ 목표. 그게 0이면 루프는 할 일이 없다 → 종료.
+# 판정: 이전 미완 목표뿐 아니라 현재 영수증의 Gap/명시적 잔여 항목도 검사한다.
+# 현재 턴 자체는 항상 🔄이므로 영수증이 없는 잡담/조회는 계속 대상에서 제외하되,
+# 작업 영수증이 [Gap]<THRESHOLD 또는 잔여 항목을 밝히면 반드시 INCOMPLETE다.
 _pending_others = [i for i, g in enumerate(result['goals'])
                    if g['status'] in ('🔄진행중', '⏳대기') and i != cur]
-all_resolved = (len(_pending_others) == 0)
-result['verdict'] = 'COMPLETE' if (all_resolved or gap >= THRESHOLD) else 'INCOMPLETE'
+_empty_reason = bool(re.fullmatch(
+    r'(?:없음|해당\s*없음|none|n/?a|-|이유\s*미기재)', _auto_reason, re.I))
+_blocked_current = (result['final_receipt'] and _auto_resume == 'blocked' and
+                    bool(_auto_reason) and not _empty_reason)
+_pending_current = (result['final_receipt'] and not _blocked_current and
+                    (_auto_resume != 'done' or not _receipt_done or
+                     _receipt_open or _invalid_done))
+all_resolved = (len(_pending_others) == 0 and not _pending_current)
+if _blocked_current:
+    result['verdict'] = 'BLOCKED'
+else:
+    result['verdict'] = ('COMPLETE'
+                         if (all_resolved or (not _pending_current and gap >= THRESHOLD))
+                         else 'INCOMPLETE')
 
 # 사람용 요약(stderr)
 def e(s): sys.stderr.write(s + '\n')
@@ -193,8 +262,12 @@ q = [x for x in ([f'게이트{gb}' if gb else '', f'지적{pb}' if pb else '', f
 qnote = f' · ⚠️보고품질 이슈({", ".join(q)}, 완료율과 별도)' if q else ''
 e(f'Gap(완료율): {gap}% (목표 {eff}/{result["total"]} 해결){qnote}')
 e(f'정직Gap(증거보유): {result["honest_gap"]}% (증거 {result["evidence_resolved"]}/{result["total"]}) — 영수증+T1 있는 목표만')
-e(f'판정: {result["verdict"]}' + (' — 모든 목표 ✅해결' if all_resolved
-   else ' — 진행중/미완 목표 존재' if result['verdict']=='INCOMPLETE' else ''))
+if result['verdict'] == 'BLOCKED':
+    e(f'판정: BLOCKED — 자동 재진행 차단: {_auto_reason or "이유 미기재"}')
+elif result['verdict'] == 'INCOMPLETE':
+    e('판정: INCOMPLETE — 진행중/미완 목표 존재')
+else:
+    e('판정: COMPLETE' + (' — 모든 목표 ✅해결' if all_resolved else ''))
 
 # ▶ 다음 단계 (체크 강화) — INCOMPLETE면 미완 목표를 자동실행 대상으로 명시.
 # 루프는 이 목록이 비면(모두 ✅) COMPLETE로 종료 → "다음 단계 없을 때까지 진행" 계약 충족.
@@ -203,8 +276,17 @@ e(f'판정: {result["verdict"]}' + (' — 모든 목표 ✅해결' if all_resolv
 #   실제 '다음 단계' = 이전에 남겨둔 미완 목표만. (verdict 계산은 불변 — 표시/자동실행 대상만 정정)
 _next = [g['summary'] for i, g in enumerate(result['goals'])
          if g['status'] in ('🔄진행중', '⏳대기') and i != cur]
+if _pending_current:
+    if _receipt_open_items:
+        _next.extend(_receipt_open_items)
+    elif cur is not None:
+        _next.append(result['goals'][cur]['summary'])
+_next = list(dict.fromkeys(_next))
 result['next_steps'] = _next
-if result['verdict'] == 'INCOMPLETE' and _next:
+if result['verdict'] == 'BLOCKED':
+    result['next_steps'] = []
+    e(f'▶ 다음 단계: 차단 — {_auto_reason or "이유 미기재"}')
+elif result['verdict'] == 'INCOMPLETE' and _next:
     e('▶ 다음 단계 (자동 실행 대상):')
     for _s in _next[:5]:
         e(f'  - {_s}')
@@ -212,5 +294,5 @@ elif result['verdict'] == 'COMPLETE':
     e('▶ 다음 단계: 없음 — 루프 종료')
 
 print(json.dumps(result, ensure_ascii=False))
-sys.exit(0 if result['verdict'] == 'COMPLETE' else 2)
+sys.exit(0 if result['verdict'] in ('COMPLETE', 'BLOCKED') else 2)
 PYEOF

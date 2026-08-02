@@ -6,7 +6,7 @@
 #
 # 계약(과거 '반복 Stop훅 스팸' 재발 방지):
 #   - 작업 보고(검증 영수증)가 있는 턴에서만 자동 계속 → 잡담/조회 턴은 건드리지 않음(final_receipt 게이트)
-#   - 영수증의 [Gap] 값이 완료 신호: [Gap]>=98(=COMPLETE) → 종료 / [Gap]<98(=INCOMPLETE) → 계속
+#   - 영수증의 [Gap]과 명시적 잔여 항목을 모두 검사: Gap=100 + 잔여없음 + done일 때만 종료
 #   - 총 횟수 cap + stop_hook_active 인지 → runaway 차단
 #   - 토글: NCO_AUTOLOOP=0 (완전 비활성), 재개: rm 상태파일
 #
@@ -25,20 +25,21 @@ except: print('')" 2>/dev/null)
 [ ! -f "$TX" ] && exit 0
 
 SID=$(basename "$TX" .jsonl)
-STATE="/tmp/nco-autoloop-${SID}"
+STATE_DIR="${NCO_AUTOLOOP_STATE_DIR:-/tmp}"
+STATE="$STATE_DIR/nco-autoloop-${SID}"
 TOTAL_CAP=${NCO_AUTOLOOP_TOTAL_CAP:-10}
-GOAL_CHECK="$HOME/.claude/hooks/session-goal-check.sh"
+GOAL_CHECK="${NCO_AUTOLOOP_GOAL_CHECK:-$HOME/.claude/hooks/session-goal-check.sh}"
 [ -x "$GOAL_CHECK" ] || [ -f "$GOAL_CHECK" ] || { rm -f "$STATE"; exit 0; }
 
 PROJDIR="${CLAUDE_PROJECT_DIR:-/Users/nova-ai/project}"
-JSON=$(CLAUDE_PROJECT_DIR="$PROJDIR" bash "$GOAL_CHECK" "$TX" 2>/dev/null)
+JSON=$(GOAL_CHECK_THRESHOLD=100 CLAUDE_PROJECT_DIR="$PROJDIR" bash "$GOAL_CHECK" "$TX" 2>/dev/null)
 ec=$?
 
 # stale-read 방지(레이스): Stop 훅이 직전 완료 턴([Gap]100 등)이 transcript에 flush되기 전에
 # 읽으면 미완으로 오판해 헛돎. INCOMPLETE면 잠깐 대기 후 1회 재확인 — 완료 턴이 반영되면 종료.
 if [ "$ec" = "2" ]; then
     sleep 0.7
-    JSON=$(CLAUDE_PROJECT_DIR="$PROJDIR" bash "$GOAL_CHECK" "$TX" 2>/dev/null)
+    JSON=$(GOAL_CHECK_THRESHOLD=100 CLAUDE_PROJECT_DIR="$PROJDIR" bash "$GOAL_CHECK" "$TX" 2>/dev/null)
     ec=$?
 fi
 
@@ -75,13 +76,18 @@ EOF
 fi
 printf '%s\n' "$TOTAL" > "$STATE"
 
-# exit 2 — 다음 단계 자동 실행 지시 주입 (stop_hook_active와 무관하게 cap이 상한 보장)
+# exit 2 — 다음 단계 자동 실행 지시 주입 (stop_hook_active 재진입은 세션 cap으로 제한)
 cat >&2 <<EOF
 [AUTO-LOOP] 다음 단계가 남아있습니다 (${TOTAL}/${TOTAL_CAP}). 지금 자동으로 실행하세요:
 ${NEXT:-(session-goal-check: 미완 목표 진행중)}
 
-완료 기준: 실제 검증 후 '## 검증 영수증'에 [Gap] 100% 로 보고하면 루프가 COMPLETE로 종료됩니다.
-미완이면 [Gap] N%(<100)로 보고하고 다음 단계를 계속하세요.
+실행 규칙:
+1. 상태 보고만 하고 멈추지 말고 위 항목을 실제로 처리합니다.
+2. 서로 독립인 항목은 먼저 분리해 NCO conductor/parallel 한 배치로 병렬 실행하고, 의존 항목만 순차 처리합니다.
+3. 파일 편집 전 NCO lease를 확인하고, 각 결과를 T1 실도구로 검증합니다.
+4. 실제 검증 뒤 '## 검증 영수증'에 [Gap] 100%, '[미검증항목] 없음', '[자동재진행] done'을 함께 보고해야 종료됩니다.
+미완이면 [Gap] N%(<100), 실제 남은 항목, '[자동재진행] continue'를 명시하고 즉시 계속하세요.
+사람의 결정·권한·외부 상태가 꼭 필요하면 '[자동재진행] blocked: <이유>'로 정지하세요.
 강제 종료: NCO_AUTOLOOP=0  (또는 상한 도달 시 자동 정지)
 EOF
 exit 2
