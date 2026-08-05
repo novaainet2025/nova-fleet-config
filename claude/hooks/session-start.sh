@@ -104,7 +104,17 @@ if [ -n "$CLAUDE_ENV_FILE" ]; then
     echo "export NCO_SESSION_ID=\"$NCO_SESSION_ID\"" >> "$CLAUDE_ENV_FILE"
     # inter-session plugin: client.py reads INTER_SESSION_NAME env to skip
     # auto_name_from_cwd() fallback (which picks first claude-*.pid or cwd basename)
-    echo "export INTER_SESSION_NAME=\"$NCO_NAME\"" >> "$CLAUDE_ENV_FILE"
+    # 2026-08-05: bare claude-N은 기기 간 충돌 위험(gentop의 claude-2 등) → 버스 등록명만
+    # <device>-claude-N 으로 승격. NCO_NAME/heartbeat는 bare 유지 [[feedback_inter_session_name]]
+    _IS_DEV=$(hostname 2>/dev/null | tr '[:upper:]' '[:lower:]' | sed -E 's/\.local$//; s/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
+    if [ -n "$_IS_DEV" ] && [ -n "$NCO_NAME" ]; then
+        _IS_SUF="-$NCO_NAME"
+        _IS_DEV="${_IS_DEV:0:$((40-${#_IS_SUF}))}"; _IS_DEV="${_IS_DEV%-}"
+        _IS_NAME="${_IS_DEV}${_IS_SUF}"
+    else
+        _IS_NAME="$NCO_NAME"
+    fi
+    echo "export INTER_SESSION_NAME=\"$_IS_NAME\"" >> "$CLAUDE_ENV_FILE"
 fi
 
 # ========================================
